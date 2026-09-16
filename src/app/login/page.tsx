@@ -42,9 +42,9 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-header">
           <div className="brand-logo-container">
-            <img src="/assets/logo.png" alt="Yogico Logo" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            <img src="/assets/logo.png" alt="요기보 Logo" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           </div>
-          <h2>Yogico CRM</h2>
+          <h2>요기보 B2B</h2>
           <p>Importer & buyer pipeline</p>
         </div>
         

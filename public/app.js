@@ -1819,7 +1819,7 @@ async function _renderInner(seq) {
     return;
   }
   if (state.view === "tool-crm-account") {
-    els.viewTitle.textContent = "👤 CRM 계정 관리";
+    els.viewTitle.textContent = "👤 내 계정 관리";
     els.viewSubtitle.textContent = "내 로그인 아이디를 확인하고 비밀번호를 바꿉니다.";
     renderCrmAccountPage();
     return;
@@ -15085,7 +15085,7 @@ function initSettingsModal() {
 }
 
 /**
- * 👤 CRM 계정 관리 — 로그인한 사람이 자기 비밀번호(와 아이디)를 바꾸는 화면.
+ * 👤 내 계정 관리 — 로그인한 사람이 자기 비밀번호(와 아이디)를 바꾸는 화면.
  * 사람마다 아이디가 따로 있고(david 대표님 · hoon 전무님 · 초기 비밀번호 yogibo), 각자 여기서 바꾼다.
  * 서버: PUT /api/users/me — 현재 비밀번호 확인 · 바꾸면 로그아웃 → 새 정보로 다시 로그인.
  */
@@ -15805,7 +15805,7 @@ function downloadSampleCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'yogico-crm-예제양식.csv';
+  a.download = 'yogibo-b2b-예제양식.csv';
   document.body.appendChild(a);
   a.click();
   a.remove();

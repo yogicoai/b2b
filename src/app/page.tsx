@@ -30,7 +30,7 @@ export default function Home() {
             </div>
             <div className="brand-text">
               <h1>요기보 B2B</h1>
-              <p>국내 B2B 발굴·메일 관리</p>
+              <p>B2B 관리메일</p>
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
@@ -151,8 +151,8 @@ export default function Home() {
                 해외판의 K-beauty 바이어 고정 시드 명단이라 국내에 쓸 데가 없다.
                 같은 자리를 [🧲 키워드 발굴] 그룹이 대신한다. */}
             {/* 로그인 아이디·비밀번호 — 사람마다 아이디가 따로 있다 (david 대표님 · hoon 전무님 …) */}
-            <button className="nav-item" data-view="tool-crm-account" type="button" title="CRM 계정 관리 — 내 로그인 아이디 확인 · 비밀번호 변경">
-              <span className="nav-icon">👤</span><span className="nav-label">CRM 계정 관리</span>
+            <button className="nav-item" data-view="tool-crm-account" type="button" title="내 계정 관리 — 로그인 아이디 확인 · 비밀번호 변경">
+              <span className="nav-icon">👤</span><span className="nav-label">내 계정 관리</span>
             </button>
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
               <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>

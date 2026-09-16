@@ -11,8 +11,17 @@ import { getMailScope, mailFilter, UNAUTHORIZED, type MailScope } from '@/lib/ma
 const LIST_PROJECTION = {
   // 발송 우선순위 — 목록에서 바로 배지로 보여준다
   recoScore: 1, recoReasons: 1,
-  // 국내판 타깃 분류 — 목록·탭·발송 양식이 전부 이 값을 본다
+  // ── 국내판 필드 ──
+  // 검토 화면이 "이 회사가 어떤 곳인가"를 설명하려면 이만큼은 있어야 한다.
+  // 해외판에서 쓰던 Type·BrandsChannels·Evidence 는 크롤링 리드에 값이 없어서,
+  // 이것들을 안 내려보내면 카드에 회사명과 이메일만 남는다.
   category: 1,
+  naverCategory: 1,   // 네이버 업종 (예: "숙박>콘도,리조트")
+  address: 1,
+  keyword: 1,         // 이 업체를 찾아낸 검색어
+  'verification.score': 1,
+  'verification.aiVerdict': 1,
+  'verification.aiConfidence': 1,
   // 근거·업종의 한국어본 (화면은 이쪽을 우선 표시)
   EvidenceKo: 1, TypeKo: 1,
   // AI 판정 사유 — 이미 한국어로 저장돼 있는데 화면에 안 나오고 있었다.

@@ -1,8 +1,8 @@
 import './styles.css';
 
 export const metadata = {
-  title: '요기보 B2B CRM',
-  description: '국내 B2B 발굴 · 검증 · 메일 발송 · 답장 관리',
+  title: '요기보 B2B 관리메일',
+  description: '업체 발굴 · AI 검증 · 메일 발송 · 답장 관리',
 };
 
 // 다크모드 초기화 스크립트 — <head> 안에서 실행되어 FOUC 방지
