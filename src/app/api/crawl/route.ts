@@ -41,15 +41,25 @@ export async function GET(req: Request) {
   // ── 실행 전 예상치 ──────────────────────────────────────
   // 돈과 시간이 나가는 일이라, 누르기 전에 얼마나 드는지 보여준다.
   if (url.searchParams.get('estimate')) {
-    const category = url.searchParams.get('category') || '';
-    if (!isCategoryKey(category)) {
-      return NextResponse.json({ success: false, error: '카테고리를 골라 주세요.' }, { status: 400 });
+    // 카테고리를 여러 개 걸 수 있으므로 합산해서 돌려준다
+    const cats = (url.searchParams.get('categories') || url.searchParams.get('category') || '')
+      .split(',').map((c) => c.trim()).filter(isCategoryKey);
+    if (!cats.length) {
+      return NextResponse.json({ success: false, error: '카테고리를 하나 이상 골라 주세요.' }, { status: 400 });
     }
     const typed = (url.searchParams.get('keywords') || '')
       .split(',').map((k) => k.trim()).filter(Boolean);
-    const keywords = typed.length ? typed : await resolveKeywords(category);
 
-    const queries = keywords.length * REGIONS.length;
+    let queries = 0;
+    const perCategory: Array<{ key: string; label: string; keywords: number; queries: number }> = [];
+    for (const c of cats) {
+      // 키워드를 직접 적었으면 고른 카테고리 전부에 같은 것을 쓴다
+      const kws = typed.length ? typed : await resolveKeywords(c);
+      const q = kws.length * REGIONS.length;
+      queries += q;
+      perCategory.push({ key: c, label: getCategory(c)?.label || c, keywords: kws.length, queries: q });
+    }
+
     const found = queries * PLACES_PER_QUERY;
     const withEmail = Math.round(found * EMAIL_HIT_RATE);
     const costKrw = aiCostKrw(
@@ -60,7 +70,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
-      keywords,
+      categories: perCategory,
       usingDefaults: typed.length === 0,
       regions: REGIONS.length,
       queries,
@@ -79,9 +89,24 @@ export async function GET(req: Request) {
   if (jobId) {
     const job = await CrawlJob.findOne({ jobId }).lean() as Record<string, any> | null;
     if (!job) return NextResponse.json({ success: false, error: '작업을 찾을 수 없습니다.' }, { status: 404 });
+
+    // 같은 묶음의 다른 카테고리도 같이 준다. 다섯 개를 걸어 놨으면
+    // "지금 두 번째가 돌고 나머지 셋은 대기" 가 한눈에 보여야 한다.
+    const queue = job.queueId
+      ? await CrawlJob.find({ queueId: job.queueId })
+          .sort({ queueIndex: 1 })
+          .select('jobId category status queueIndex verified failed found')
+          .lean() as Array<Record<string, any>>
+      : [];
+
+    // 지금 돌고 있는 것이 바뀌었으면 화면이 그쪽을 따라가야 한다
+    const active = queue.find((q) => q.status === 'running');
+
     return NextResponse.json({
       success: true,
       job: { ...job, costKrw: aiCostKrw(job.inputTokens || 0, job.outputTokens || 0) },
+      queue,
+      activeJobId: active?.jobId || null,
     });
   }
 
@@ -104,10 +129,14 @@ export async function POST(req: Request) {
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* 아래 검증에서 걸린다 */ }
 
-  const category = body.category;
-  if (!isCategoryKey(category)) {
+  // 카테고리를 여러 개 걸 수 있다. 하나씩 차례로 돈다.
+  const cats: string[] = Array.isArray(body.categories)
+    ? body.categories.map(String).filter(isCategoryKey)
+    : isCategoryKey(body.category) ? [body.category as string] : [];
+
+  if (!cats.length) {
     return NextResponse.json(
-      { success: false, error: 'category 는 public|company|medical|resort|sports 중 하나여야 합니다.' },
+      { success: false, error: '카테고리를 하나 이상 골라 주세요.' },
       { status: 400 },
     );
   }
@@ -118,35 +147,54 @@ export async function POST(req: Request) {
 
   await dbConnect();
 
-  // 같은 카테고리가 이미 돌고 있으면 또 띄우지 않는다.
+  // 이미 돌고 있거나 대기 중인 카테고리는 또 걸지 않는다.
   // 두 작업이 같은 업체를 동시에 집으면 중복 검사가 소용없어진다.
-  const running = await CrawlJob.findOne({ category, status: 'running' }).lean() as Record<string, any> | null;
-  if (running) {
+  const busy = await CrawlJob.find({
+    category: { $in: cats },
+    status: { $in: ['running', 'queued'] },
+  }).select('category').lean() as Array<{ category: string }>;
+
+  const busySet = new Set(busy.map((b) => b.category));
+  const todo = cats.filter((c) => !busySet.has(c));
+
+  if (!todo.length) {
     return NextResponse.json({
       success: false,
-      error: `${getCategory(category)?.label} 크롤링이 이미 돌고 있습니다.`,
-      jobId: running.jobId,
+      error: `이미 돌고 있습니다: ${[...busySet].map((c) => getCategory(c)?.label || c).join(', ')}`,
     }, { status: 409 });
   }
 
-  const jobId = `crawl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  await CrawlJob.create({
-    jobId,
+  const queueId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const stamp = Date.now();
+  const jobs = todo.map((category, i) => ({
+    jobId: `crawl-${stamp}-${i}-${Math.random().toString(36).slice(2, 5)}`,
     category,
     keywords: keywords || [],
-    status: 'running',
-    phase: '준비 중',
+    // 첫 번째만 바로 돌린다. 나머지는 앞의 것이 끝나면 스스로 이어받는다
+    // (lib/crawler/run.ts startNextInQueue)
+    status: i === 0 ? 'running' : 'queued',
+    phase: i === 0 ? '준비 중' : '대기 중',
+    queueId,
+    queueIndex: i,
+    queueTotal: todo.length,
     createdBy: user,
-  });
+  }));
+  await CrawlJob.insertMany(jobs);
 
   // 기다리지 않는다 — 작업은 응답을 보낸 뒤에도 계속 돈다.
   // (Vercel 서버리스에서는 응답과 함께 함수가 죽으므로 이 경로는 로컬/워커 전용이다)
   void runCrawlJob({
-    category,
+    category: jobs[0].category as never,
     keywords,
-    jobId,
+    jobId: jobs[0].jobId,
     maxQueries: Math.min(Number(body.maxQueries) || 400, 400),
   });
 
-  return NextResponse.json({ success: true, jobId });
+  return NextResponse.json({
+    success: true,
+    jobId: jobs[0].jobId,
+    queueId,
+    queued: jobs.length,
+    skipped: [...busySet],
+  });
 }

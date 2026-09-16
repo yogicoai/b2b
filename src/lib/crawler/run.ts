@@ -294,14 +294,46 @@ export async function runCrawlJob(opts: CrawlOptions): Promise<void> {
     await CrawlJob.updateOne({ jobId }, {
       $set: { status: 'done', phase: '완료', currentLabel: '', finishedAt: new Date() },
     });
+    await startNextInQueue(jobId);
   } catch (e) {
     await CrawlJob.updateOne({ jobId }, {
       $set: { status: 'failed', phase: '오류로 중단', finishedAt: new Date() },
       $push: { problems: (e as Error).message },
     });
+    // 하나가 엎어져도 나머지는 돌린다 — 다섯 개를 걸어 놨는데 첫 번째가
+    // 실패했다고 전부 멈추면, 돌아와서 보고 다시 걸어야 한다.
+    await startNextInQueue(jobId);
   } finally {
     // 브라우저를 놔두면 다음 실행에서 프로세스가 쌓인다
     const { closeBrowser } = await import('./browser');
     await closeBrowser().catch(() => {});
   }
+}
+
+/**
+ * 같은 묶음에서 아직 대기 중인 다음 작업을 이어서 돌린다.
+ *
+ * 순차로 도는 이유: 한꺼번에 돌리면 네이버 API 와 헤드리스 브라우저를 동시에
+ * 여러 개 쓰게 되고, 진행률이 "몇 중 몇"으로 안 나와 남은 시간을 짐작할 수 없다.
+ */
+async function startNextInQueue(finishedJobId: string): Promise<void> {
+  const done = await CrawlJob.findOne({ jobId: finishedJobId }).select('queueId').lean() as { queueId?: string } | null;
+  if (!done?.queueId) return;
+
+  const next = await CrawlJob.findOne({ queueId: done.queueId, status: 'queued' })
+    .sort({ queueIndex: 1 })
+    .lean() as Record<string, any> | null;
+  if (!next) return;
+
+  await CrawlJob.updateOne(
+    { jobId: next.jobId },
+    { $set: { status: 'running', phase: '준비 중', startedAt: new Date() } },
+  );
+  // 기다리지 않는다 — 이 함수를 부른 작업은 이미 끝났고, 다음 것은 스스로 돈다
+  void runCrawlJob({
+    category: next.category,
+    keywords: next.keywords?.length ? next.keywords : undefined,
+    jobId: next.jobId,
+    maxQueries: 400,
+  });
 }

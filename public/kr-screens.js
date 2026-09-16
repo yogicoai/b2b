@@ -77,6 +77,13 @@ const KR_INPUT_STYLE =
    ───────────────────────────────────────────────────────────── */
 
 var _crawlJobId = null;      // 지금 보고 있는 작업
+/**
+ * 고른 카테고리들. 여러 개를 걸면 **하나씩 차례로** 돈다.
+ *
+ * 한꺼번에 돌리지 않는 이유: 네이버 API 와 헤드리스 브라우저를 동시에 여러 개
+ * 쓰게 되고, 진행률이 "몇 중 몇"으로 안 나와 남은 시간을 짐작할 수 없다.
+ */
+var _crawlCats = new Set(['resort']);
 var _crawlTimer = null;      // 진행률 폴링
 var _crawlNavigated = false; // 완료 후 한 번만 데려간다 (폴링마다 튕기면 안 된다)
 
@@ -88,9 +95,15 @@ const KR_FIND_STATE = {
 };
 
 async function renderCrawlPage() {
-  const categoryOptions = KR_CATEGORIES
-    .map((c) => '<option value="' + c.key + '">' + escapeHtml(c.label) + '</option>')
-    .join('');
+  const categoryChips = KR_CATEGORIES.map((c) => {
+    const on = _crawlCats.has(c.key);
+    return '<button type="button" class="kr-cat-pick" data-cat="' + c.key + '" ' +
+      'style="padding:7px 14px;font-size:13px;font-weight:700;border-radius:999px;cursor:pointer;' +
+      'transition:all .15s;border:1px solid ' + (on ? '#3FA6D3' : 'var(--border-default)') + ';' +
+      'background:' + (on ? '#3FA6D3' : 'var(--bg-surface)') + ';' +
+      'color:' + (on ? '#fff' : 'var(--text-secondary)') + '">' +
+      (on ? '✓ ' : '') + escapeHtml(c.label) + '</button>';
+  }).join('');
 
   els.content.innerHTML =
     '<div style="max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">' +
@@ -99,8 +112,14 @@ async function renderCrawlPage() {
         '전국에서 업체를 찾고, 홈페이지에서 메일 주소를 뽑고, 규모가 맞는지 AI가 가립니다. ' +
         '끝나면 <b>AI 검증 완료</b>에 바로 들어갑니다 — 중간에 확인하실 것은 없습니다.') +
 
-      krField('타깃 카테고리', '',
-        '<select id="krCrawlCategory" style="' + KR_INPUT_STYLE + ';max-width:360px">' + categoryOptions + '</select>') +
+      '<div style="margin-bottom:12px">' +
+      '<span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">' +
+      '타깃 카테고리 <span style="font-weight:400;color:var(--text-tertiary)">· 여러 개 고르면 차례로 돕니다</span></span>' +
+      '<div id="krCatPicks" style="display:flex;flex-wrap:wrap;gap:6px">' + categoryChips + '</div>' +
+      '<button type="button" id="krCatAll" style="margin-top:7px;font-size:11.5px;font-weight:700;' +
+      'padding:4px 11px;border-radius:999px;border:1px solid var(--border-default);' +
+      'background:var(--bg-surface);color:var(--text-tertiary);cursor:pointer">5개 전부 고르기</button>' +
+      '</div>' +
 
       krField('키워드', '비워 두면 이 카테고리에 등록된 키워드를 모두 씁니다',
         '<input id="krCrawlKeywords" type="text" autocomplete="off" ' +
@@ -121,10 +140,21 @@ async function renderCrawlPage() {
     ) +
     '<div id="krCrawlProgress"></div></div>';
 
-  const catSel = document.getElementById('krCrawlCategory');
-  const kwInput = document.getElementById('krCrawlKeywords');
-  catSel.addEventListener('change', krLoadEstimate);
-  kwInput.addEventListener('change', krLoadEstimate);
+  els.content.querySelectorAll('.kr-cat-pick').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.cat;
+      // 마지막 하나는 못 끄게 한다 — 아무것도 안 고른 채로 시작 버튼을 누르는
+      // 상태가 되면, 왜 안 되는지 화면이 설명해 주지 않는다
+      if (_crawlCats.has(k)) { if (_crawlCats.size > 1) _crawlCats.delete(k); }
+      else _crawlCats.add(k);
+      renderCrawlPage();
+    });
+  });
+  document.getElementById('krCatAll')?.addEventListener('click', () => {
+    KR_CATEGORIES.forEach((c) => _crawlCats.add(c.key));
+    renderCrawlPage();
+  });
+  document.getElementById('krCrawlKeywords').addEventListener('change', krLoadEstimate);
   document.getElementById('krCrawlRun').addEventListener('click', krStartCrawl);
 
   krLoadEstimate();
@@ -135,12 +165,11 @@ async function renderCrawlPage() {
 async function krLoadEstimate() {
   const box = document.getElementById('krCrawlEstimate');
   if (!box) return;
-  const category = document.getElementById('krCrawlCategory').value;
   const keywords = document.getElementById('krCrawlKeywords').value.trim();
 
   box.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">예상치 계산 중...</div>';
 
-  const q = '/api/crawl?estimate=1&category=' + encodeURIComponent(category) +
+  const q = '/api/crawl?estimate=1&categories=' + encodeURIComponent(Array.from(_crawlCats).join(',')) +
     (keywords ? '&keywords=' + encodeURIComponent(keywords) : '');
   const e = await safeJsonFetch(q);
   if (!e || !e.success) { box.innerHTML = ''; return; }
@@ -157,11 +186,18 @@ async function krLoadEstimate() {
     'border:1px solid var(--border-default);border-radius:10px">' +
     '<div style="font-size:11.5px;font-weight:800;color:var(--text-secondary);margin-bottom:6px">' +
     '실행하면 이렇게 됩니다' +
-    (e.usingDefaults
-      ? ' <span style="font-weight:400;color:var(--text-tertiary)">· 등록된 키워드 ' + e.keywords.length + '개 사용</span>'
+    (e.categories.length > 1
+      ? ' <span style="font-weight:400;color:var(--text-tertiary)">· ' + e.categories.length + '개를 차례로</span>'
       : '') +
     '</div>' +
-    row('검색', e.queries.toLocaleString() + '회', '키워드 ' + e.keywords.length + '개 × 전국 ' + e.regions + '개') +
+    (e.categories.length > 1
+      ? '<div style="font-size:11.5px;color:var(--text-tertiary);line-height:1.8;margin-bottom:6px;' +
+        'padding-bottom:6px;border-bottom:1px solid var(--border-subtle, var(--border-default))">' +
+        e.categories.map((c, i) => (i + 1) + '. ' + escapeHtml(c.label) +
+          ' <span style="opacity:.7">키워드 ' + c.keywords + '개</span>').join('<br>') +
+        '</div>'
+      : '') +
+    row('검색', e.queries.toLocaleString() + '회', '전국 ' + e.regions + '개 시·도') +
     row('발견 예상', '약 ' + e.found.toLocaleString() + '곳') +
     row('메일 확보 예상', '약 ' + e.withEmail.toLocaleString() + '곳', '나머지는 자동 제외') +
     row('AI 검증', '약 ' + e.aiCount.toLocaleString() + '건', '≈ ' + e.costKrw.toLocaleString() + '원') +
@@ -172,13 +208,15 @@ async function krLoadEstimate() {
 }
 
 async function krStartCrawl() {
-  const category = document.getElementById('krCrawlCategory').value;
+  const cats = Array.from(_crawlCats);
   const keywords = document.getElementById('krCrawlKeywords').value
     .split(',').map((s) => s.trim()).filter(Boolean);
-  const label = (KR_CATEGORIES.find((c) => c.key === category) || {}).label || category;
+  const labels = cats.map((k) => (KR_CATEGORIES.find((c) => c.key === k) || {}).label || k);
 
   if (!confirm(
-    '[' + label + '] 크롤링을 시작합니다.\n\n' +
+    (cats.length > 1
+      ? cats.length + '개 카테고리를 차례로 돕니다.\n\n' + labels.map((l, i) => (i + 1) + '. ' + l).join('\n')
+      : '[' + labels[0] + '] 크롤링을 시작합니다.') + '\n\n' +
     '전국 17개 시·도를 돌면서 업체를 찾고, 메일 주소를 뽑고, AI가 규모를 가립니다.\n' +
     '시작하면 중간에 멈추지 않습니다.\n\n진행할까요?'
   )) return;
@@ -189,7 +227,7 @@ async function krStartCrawl() {
   const res = await safeJsonFetch('/api/crawl', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ category, keywords }),
+    body: JSON.stringify({ categories: cats, keywords }),
   });
 
   if (btn) { btn.disabled = false; btn.textContent = '확인하고 시작'; }
@@ -224,16 +262,29 @@ async function krPollCrawl() {
     if (state.view !== 'tool-crawl' || !_crawlJobId) { krStopCrawlPolling(); return; }
     const res = await safeJsonFetch('/api/crawl?jobId=' + encodeURIComponent(_crawlJobId));
     if (!res || !res.success) { krStopCrawlPolling(); return; }
-    krRenderCrawlProgress(res.job);
-    if (res.job.status !== 'running') krStopCrawlPolling();
+
+    // 앞 카테고리가 끝나고 다음 것이 시작됐으면 화면도 그쪽을 따라간다.
+    // 안 따라가면 "완료"로 멈춘 화면만 보여서 다음 것이 도는 줄 모른다.
+    if (res.activeJobId && res.activeJobId !== _crawlJobId) {
+      _crawlJobId = res.activeJobId;
+      _crawlNavigated = false;
+      return;
+    }
+
+    krRenderCrawlProgress(res.job, res.queue || []);
+
+    // 묶음에 아직 남은 것이 있으면 계속 지켜본다
+    const queueLeft = (res.queue || []).some((q) => q.status === 'queued' || q.status === 'running');
+    if (res.job.status !== 'running' && !queueLeft) krStopCrawlPolling();
   };
   await tick();
   _crawlTimer = setInterval(tick, 2000);
 }
 
-function krRenderCrawlProgress(job) {
+function krRenderCrawlProgress(job, queue) {
   const box = document.getElementById('krCrawlProgress');
   if (!box) return;
+  queue = queue || [];
 
   // 단계마다 "몇 중 몇"이 다르다. 지금 도는 단계의 것을 보여준다.
   let done = 0, total = 0;
@@ -276,8 +327,24 @@ function krRenderCrawlProgress(job) {
     '</div>' +
     '<div style="font-size:11.5px;color:var(--text-tertiary)">' +
     escapeHtml((KR_CATEGORIES.find((c) => c.key === job.category) || {}).label || job.category) +
+    (job.queueTotal > 1 ? ' (' + (job.queueIndex + 1) + '/' + job.queueTotal + ')' : '') +
     (job.costKrw ? ' · AI ' + job.costKrw.toLocaleString() + '원 사용' : '') +
     '</div></div>' +
+
+    // 여러 개를 걸었으면 묶음 전체가 어디까지 갔는지 보여준다
+    (queue.length > 1
+      ? '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">' +
+        queue.map((q) => {
+          const lbl = (KR_CATEGORIES.find((c) => c.key === q.category) || {}).label || q.category;
+          const st = q.status === 'done' ? ['✅', '#166534', '#dcfce7']
+            : q.status === 'running' ? ['⏳', '#0c4a6e', '#e0f2fe']
+            : q.status === 'queued' ? ['·', 'var(--text-tertiary)', 'var(--bg-surface-alt, transparent)']
+            : ['⚠️', '#b91c1c', '#fee2e2'];
+          return '<span style="padding:3px 10px;font-size:11.5px;font-weight:700;border-radius:999px;' +
+            'background:' + st[2] + ';color:' + st[1] + '">' + st[0] + ' ' + escapeHtml(lbl) +
+            (q.status === 'done' ? ' ' + (q.verified || 0) + '곳' : '') + '</span>';
+        }).join('') + '</div>'
+      : '') +
 
     '<div style="height:8px;background:var(--border-default);border-radius:99px;overflow:hidden">' +
     '<div style="height:100%;width:' + pct + '%;background:' + tone + ';transition:width .4s"></div></div>' +
@@ -323,7 +390,8 @@ function krRenderCrawlProgress(job) {
   // 끝났으면 결과가 있는 곳으로 데려간다. 다 돌려놓고 "이제 어디로 가지"를
   // 다시 찾게 하면 안 된다. 넘어갈 때 **이번에 돌린 분류**를 골라 둔 채로 간다 —
   // 방금 리조트를 캤는데 전체 목록이 열리면 새로 들어온 것이 어디 있는지 안 보인다.
-  if (job.status === 'done' && !_crawlNavigated) {
+  const allDone = !queue.length || queue.every((q) => q.status !== 'queued' && q.status !== 'running');
+  if (job.status === 'done' && allDone && !_crawlNavigated) {
     _crawlNavigated = true;
     const go = () => {
       state.categoryFilter = job.category || null;

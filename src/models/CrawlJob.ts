@@ -14,7 +14,18 @@ export interface ICrawlJob extends Document {
   jobId: string;
   category: string;
   keywords: string[];
-  status: 'running' | 'done' | 'failed' | 'canceled';
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  /**
+   * 한 번에 여러 카테고리를 걸었을 때 그것들을 묶는 열쇠.
+   *
+   * 카테고리마다 작업을 따로 만들고 **하나씩 차례로** 돌린다. 한꺼번에 돌리면
+   * 네이버 API 와 브라우저를 동시에 여러 개 쓰게 되고, 진행률이 "몇 중 몇"으로
+   * 안 나와서 남은 시간을 짐작할 수 없다.
+   */
+  queueId: string;
+  /** 이 묶음에서 몇 번째인가 (화면에 "리조트·호텔 2/5" 로 보여준다) */
+  queueIndex: number;
+  queueTotal: number;
 
   // ── 진행률 ──
   /** 검색 조합 (키워드 × 지역) */
@@ -75,7 +86,10 @@ const CrawlJobSchema = new Schema<ICrawlJob>({
   jobId: { type: String, required: true, unique: true, index: true },
   category: { type: String, required: true },
   keywords: { type: [String], default: [] },
-  status: { type: String, enum: ['running', 'done', 'failed', 'canceled'], default: 'running', index: true },
+  status: { type: String, enum: ['queued', 'running', 'done', 'failed', 'canceled'], default: 'running', index: true },
+  queueId: { type: String, default: '', index: true },
+  queueIndex: { type: Number, default: 0 },
+  queueTotal: { type: Number, default: 1 },
 
   queriesTotal: { type: Number, default: 0 },
   queriesDone: { type: Number, default: 0 },
