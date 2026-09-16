@@ -26,7 +26,8 @@ export const maxDuration = 300;
  * 생겨서 진짜 거래처를 찾기가 더 어려워졌다. 한 번 오간 곳은 폴더가 아니라
  * '· 기타' 로 모은다.
  *
- * 사람이 직접 옮긴 것(groupBy:'manual')은 건드리지 않는다.
+ * 사람이 정한 자리는 건드리지 않는다 — groupBy 'manual'(이 화면에서 옮긴 것)과
+ * 'folder'(대표가 이카운트 웹메일 폴더에 넣어 둔 것). 둘 다 프로그램의 추측보다 정확하다.
  *
  * Body: {
  *   dryRun?: boolean,     // true 면 어디로 갈지만 보여주고 저장하지 않는다 (기본 true)
@@ -50,11 +51,11 @@ export async function POST(req: Request) {
   const since = new Date();
   since.setMonth(since.getMonth() - months);
 
-  // 사람이 손으로 옮긴 것은 절대 덮지 않는다 — 그게 제일 정확한 정보다.
+  // 사람이 정한 자리는 절대 덮지 않는다 — 그게 제일 정확한 정보다.
   const filter: Record<string, unknown> = {
     ...mailFilter(scope),
     date: { $gte: since },
-    groupBy: { $ne: 'manual' },
+    groupBy: { $nin: ['manual', 'folder'] },
   };
   if (!redo) {
     // 아직 어디에도 안 들어간 것만
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
   }
 
   const mails: any[] = await InboundMail.find(filter, {
-    _id: 1, from: 1, subject: 1, classification: 1, group: 1, date: 1, leadId: 1,
+    _id: 1, from: 1, subject: 1, classification: 1, group: 1, groupBy: 1, date: 1, leadId: 1,
   }).sort({ date: -1 }).limit(5000).lean();
 
   if (!mails.length) {

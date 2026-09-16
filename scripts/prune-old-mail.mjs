@@ -60,6 +60,14 @@ const keepFilter = {
     { direction: 'out' },                          // 우리가 보낸 것
     { classification: { $in: KEEP_CLASS } },       // 실제 거래·문의
     { status: { $in: ['replied', 'reviewing'] } }, // 손을 댄 것
+    // ── 사람이 자리를 정한 것은 지우지 않는다 ─────────────────────
+    // groupBy 'folder' = 대표가 이카운트 웹메일 폴더에 넣어 둔 것
+    // groupBy 'manual' = 이 화면에서 직접 옮긴 것
+    // 이 둘은 "누가 봐도 남길 이유가 있다"는 사람의 판단이다. 60일이 지났다고
+    // 프로그램이 지울 대상이 아니다. 특히 거래처 폴더에서 가져온 아카이브는
+    // 애초에 60일 밖이라, 이 보호가 없으면 들여오는 족족 삭제 후보가 된다.
+    { groupBy: { $in: ['folder', 'manual'] } },
+    { group: { $nin: [null, ''] } },               // 거래처 폴더에 들어 있음
   ],
 };
 const dropFilter = NOISE_ONLY

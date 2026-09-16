@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     const match: any = {
       ...acc.filter,
       group: { $in: [null, ''] },
-      groupBy: { $ne: 'manual' },
+      groupBy: { $nin: ['manual', 'folder'] },
       direction: 'in',
       trashedAt: null,
     };
