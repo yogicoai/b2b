@@ -10,7 +10,9 @@ import { getMailScope, mailFilter, UNAUTHORIZED, type MailScope } from '@/lib/ma
 // 상세는 개별 GET /api/leads/[id] 에서 전체 반환.
 const LIST_PROJECTION = {
   // 발송 우선순위 — 목록에서 바로 배지로 보여준다
-  recoScore: 1, recoReasons: 1, Category: 1,
+  recoScore: 1, recoReasons: 1,
+  // 국내판 타깃 분류 — 목록·탭·발송 양식이 전부 이 값을 본다
+  category: 1,
   // 근거·업종의 한국어본 (화면은 이쪽을 우선 표시)
   EvidenceKo: 1, TypeKo: 1,
   // AI 판정 사유 — 이미 한국어로 저장돼 있는데 화면에 안 나오고 있었다.
@@ -136,6 +138,8 @@ export async function GET(req: Request) {
     const q = (searchParams.get('q') || '').trim();
     // 지역 — 화면 필터에 있는데 서버가 안 받아서 골라도 아무 일이 없었다
     const region = (searchParams.get('region') || '').trim();
+    // 카테고리 — 국내판의 1차 축. 목록 위 탭(학교·공공기관 / 기업 / 병·의원 / …)이 이걸 쓴다.
+    const category = (searchParams.get('category') || '').trim();
 
     // 지운 건은 어느 화면에도 나오면 안 된다.
     // 이게 없던 동안에는 중복 정리로 deleted=true 를 붙인 2,771건이 보관함
@@ -152,6 +156,7 @@ export async function GET(req: Request) {
       ];
     }
     if (region && region !== 'All') filter.Region = region;
+    if (category && category !== 'All') filter.category = category;
     if (stage === '__failed') {
       // 검증 실패는 두 갈래로 쌓여 있다. 하나만 보여주면 배지(841)와 목록이 어긋난다.
       //   · stage 'failed'                     790건 — 대부분 보낼 메일 주소가 없어 걸러진 것

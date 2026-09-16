@@ -158,7 +158,6 @@ const LeadSchema: Schema = new Schema({
   // 같은 문장을 적어 넣는 바람에 60종류가 생겼고, "유통사만 보여줘"가 불가능해졌다.
   // 클라이언트가 "디스트리뷰터를 꼼꼼히 보고 싶다"고 해서 필터 가능한 축을 따로 둔다.
   // 값: Distributor | Brand/Manufacturer | Retail Chain | Online Store | Retailer | Clinic | Other
-  Category: { type: String, default: '' },
 
   // 영문 원문의 한국어본.
   //

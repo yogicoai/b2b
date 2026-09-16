@@ -40,8 +40,18 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const leadIds: string[] = Array.isArray(body.leadIds) ? body.leadIds : [];
   const templateId: string = String(body.templateId || '');
+  /**
+   * 예약도 리드마다 그 리드 카테고리의 양식으로 깐다.
+   *
+   * 예약은 나중에 혼자 돌기 때문에 여기서 양식을 정해 두지 않으면 고칠 기회가 없다.
+   * 한 양식으로 224곳을 깔아 두면, 며칠 뒤 호텔 문구가 요양병원으로 나간다.
+   */
+  const byCategory: boolean = body.byCategory === true;
+
   if (!leadIds.length) return NextResponse.json({ success: false, error: 'leadIds 필수' }, { status: 400 });
-  if (!templateId) return NextResponse.json({ success: false, error: 'templateId 필수' }, { status: 400 });
+  if (!byCategory && !templateId) {
+    return NextResponse.json({ success: false, error: 'templateId 필수' }, { status: 400 });
+  }
 
   const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 100));
   const intervalMinutes = Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 10));
@@ -56,15 +66,38 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
 
-    const tpl = await EmailTemplate.findById(templateId).lean();
-    if (!tpl) return NextResponse.json({ success: false, error: '메일 양식을 찾을 수 없습니다' }, { status: 400 });
-    // 첨부 주소가 깨져 있으면 예약을 깔기 전에 알린다 — 발송 시각에 줄줄이 실패로 떨어지는 것보다 낫다
-    const att = await loadTemplateAttachments((tpl as any).attachments);
-    if (!att.ok) return NextResponse.json({ success: false, error: att.error }, { status: 400 });
+    // 쓰일 양식을 모아 둔다. 카테고리별이면 카테고리마다 하나씩, 아니면 고른 것 하나.
+    const tplByCategory = new Map<string, any>();
+    let tpl: any = null;
+    if (byCategory) {
+      const rows = await EmailTemplate.find({ isActive: true, purpose: 'intro' }).lean() as any[];
+      for (const t of rows) tplByCategory.set(t.category || '', t);
+      if (!tplByCategory.size) {
+        return NextResponse.json(
+          { success: false, error: '쓸 수 있는 양식이 없습니다 — [📝 메일 양식]에서 만들어 주세요.' },
+          { status: 400 },
+        );
+      }
+    } else {
+      tpl = await EmailTemplate.findById(templateId).lean();
+      if (!tpl) return NextResponse.json({ success: false, error: '메일 양식을 찾을 수 없습니다' }, { status: 400 });
+    }
+
+    // 첨부 주소가 깨져 있으면 예약을 깔기 전에 알린다 — 발송 시각에 줄줄이 실패로 떨어지는 것보다 낫다.
+    // 쓰일 양식 전부를 확인한다. 하나라도 깨져 있으면 아무것도 깔지 않는다.
+    for (const t of byCategory ? [...tplByCategory.values()] : [tpl]) {
+      const att = await loadTemplateAttachments((t as any).attachments);
+      if (!att.ok) {
+        return NextResponse.json(
+          { success: false, error: `[${(t as any).name || '양식'}] ${att.error}` },
+          { status: 400 },
+        );
+      }
+    }
 
     const leads: any[] = await Lead.find(
       { leadId: { $in: leadIds }, deleted: { $ne: true } },
-      { leadId: 1, Email: 1, Company: 1, stage: 1, emailHistory: 1 },
+      { leadId: 1, Email: 1, Company: 1, stage: 1, emailHistory: 1, category: 1 },
     ).lean();
 
     // 이미 예약이 걸린 곳은 건너뛴다 — 같은 곳에 두 번 깔리면 이틀 연속 나간다
@@ -96,6 +129,22 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // 양식이 없는 카테고리가 섞여 있으면 **한 건도 깔지 않는다**.
+    // 일부만 예약되면 나머지는 며칠 뒤 조용히 빠진 채로 끝난다.
+    if (byCategory) {
+      const missing = new Set<string>();
+      for (const t of targets) {
+        const key = t.category || '';
+        if (!tplByCategory.has(key) && !tplByCategory.has('')) missing.add(key || '(미분류)');
+      }
+      if (missing.size) {
+        return NextResponse.json({
+          success: false,
+          error: `양식이 없는 카테고리가 있습니다: ${[...missing].join(', ')} — [📝 메일 양식]에서 만들어 주세요.`,
+        }, { status: 400 });
+      }
+    }
+
     // 고른 계정(없으면 대표 계정)으로 예약을 깐다. 그 계정이 없으면 예약을 만들지 않는다.
     // user 를 넘겨 자기 계정만 — 예약 실행은 id 만 믿으므로 남의 계정 id 는 여기서 막는다.
     const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId, user);
@@ -107,9 +156,14 @@ export async function POST(req: Request) {
     const docs = targets.map((t, i) => {
       const slot = Math.floor(i / batchSize);          // 몇 번째 묶음인가
       const when = new Date(startAt.getTime() + slot * intervalMinutes * 60_000);
+      // 예약 문서에는 **그때 쓸 양식**을 못 박아 둔다. 실행 시점에 다시 고르게 하면
+      // 그 사이 양식이 바뀌었을 때 무엇이 나갈지 알 수 없다.
+      const leadTpl = byCategory
+        ? (tplByCategory.get(t.category || '') || tplByCategory.get(''))
+        : tpl;
       return {
         leadId: t.leadId,
-        templateId,
+        templateId: String(leadTpl?._id || templateId),
         mailAccountId: String(outreach._id),
         to: t.email,
         scheduledFor: when,

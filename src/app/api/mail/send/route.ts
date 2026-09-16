@@ -27,6 +27,7 @@ export const maxDuration = 60;
  * Body:
  *   leadIds: string[]              (leadId 배열 — 1건 이상)
  *   templateId?: string            (템플릿 ID · body/subject 없을 때 필수)
+ *   byCategory?: boolean           (true면 리드의 카테고리에 맞는 양식을 각각 골라 발송)
  *   subject?: string               (템플릿 없이 커스텀 발송)
  *   body?: string                  (템플릿 없이 커스텀 발송)
  *   bodyIsHtml?: boolean           (기본 true — 폰트 적용 위해)
@@ -73,7 +74,17 @@ export async function POST(req: Request) {
   const forceDryRun: boolean = body.dryRun === true;
   const mailAccountId: string | undefined = body.mailAccountId;
 
-  if (!templateId && (!explicitSubject || !explicitBody)) {
+  /**
+   * 카테고리별로 서로 다른 양식을 쓴다 (국내판 핵심).
+   *
+   * 해외판은 한 번 고른 양식 하나를 고른 리드 전부에게 보냈다. 상대가 전부 해외
+   * 바이어라 제안 내용이 같았기 때문이다. 국내는 병원 대기실과 호텔 로비에 같은
+   * 메일을 보낼 수 없다 — 제안하는 공간도 소구점도 다르다. 그래서 리드마다
+   * 그 리드의 category 에 맞는 양식을 따로 찾아 쓴다.
+   */
+  const byCategory: boolean = body.byCategory === true;
+
+  if (!byCategory && !templateId && (!explicitSubject || !explicitBody)) {
     return NextResponse.json({ success: false, error: 'templateId 또는 subject+body 필요' }, { status: 400 });
   }
 
@@ -116,19 +127,58 @@ export async function POST(req: Request) {
   // 대상 리드 로드
   const leads = await Lead.find({ leadId: { $in: leadIds } }).lean() as any[];
 
+  // ── 카테고리별 양식 준비 ──────────────────────────────────
+  // category 가 빈 양식은 '공용' 으로 본다. 맞는 카테고리 양식이 없을 때만 쓴다.
+  const tplByCategory = new Map<string, any>();
+  if (byCategory) {
+    const rows = await EmailTemplate.find({ isActive: true, purpose: 'intro' }).lean() as any[];
+    for (const t of rows) tplByCategory.set(t.category || '', t);
+
+    // 보낼 리드 중 쓸 양식이 없는 카테고리가 있으면 **한 통도 보내지 않는다**.
+    // 한쪽만 나가고 나머지는 조용히 실패하면, 누구에게 무엇이 갔는지 알 수 없게 된다.
+    const missing = new Set<string>();
+    for (const lead of leads) {
+      const key = lead.category || '';
+      if (!tplByCategory.has(key) && !tplByCategory.has('')) missing.add(key || '(미분류)');
+    }
+    if (missing.size) {
+      return NextResponse.json({
+        success: false,
+        error: `양식이 없는 카테고리가 있습니다: ${[...missing].join(', ')} — [📝 메일 양식]에서 만들어 주세요.`,
+      }, { status: 400 });
+    }
+  }
+
+  /** 이 리드에 쓸 양식 — 카테고리 전용 → 공용 → 화면에서 고른 것 순 */
+  const templateFor = (lead: any) =>
+    byCategory ? (tplByCategory.get(lead.category || '') || tplByCategory.get('') || tpl) : tpl;
+
   // 선택된 메일 계정 프로필 로드 → 서명 블록 자동 생성용 (본문에 발송자 변수 불필요)
   const accProfile = usedAccount ? await MailAccount.findById(usedAccount.id).lean() as any : null;
   const appendSignature = tpl?.appendAccountSignature !== false;   // 템플릿 없으면 기본 true
   const sigHtml  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: true })  : '';
   const sigText  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: false }) : '';
 
-  // 양식에 첨부가 있으면 **보내기 전에** 한 번 받아 둔다 (모든 업체에 같은 파일).
+  // 양식에 첨부가 있으면 **보내기 전에** 받아 둔다.
   // 하나라도 못 받으면 한 통도 보내지 않는다 — 첨부 빠진 메일이 나가는 것보다 낫다.
-  const attLoad = await loadTemplateAttachments(tpl?.attachments);
-  if (!attLoad.ok) {
-    return NextResponse.json({ success: false, error: attLoad.error }, { status: 400 });
+  // 카테고리별 발송이면 양식마다 첨부가 다르므로, 이번에 쓰일 양식을 전부 받아 둔다.
+  const attachmentsByTemplate = new Map<string, any[]>();
+  {
+    const used = byCategory
+      ? [...new Set(leads.map((l) => templateFor(l)).filter(Boolean))]
+      : (tpl ? [tpl] : []);
+    for (const t of used) {
+      const load = await loadTemplateAttachments(t?.attachments);
+      if (!load.ok) {
+        return NextResponse.json(
+          { success: false, error: `[${t?.name || '양식'}] ${load.error}` },
+          { status: 400 },
+        );
+      }
+      attachmentsByTemplate.set(String(t?._id || ''), load.files);
+    }
+    if (!used.length) attachmentsByTemplate.set('', []);
   }
-  const attachments = attLoad.files;
 
   const now = new Date().toISOString();
   const results: any[] = [];
@@ -158,10 +208,16 @@ export async function POST(req: Request) {
       }
     }
 
+    // 이 리드에 쓸 양식 — 카테고리별 발송이면 리드마다 달라진다
+    const leadTpl = templateFor(lead);
+    const leadSubjectSrc = byCategory ? (leadTpl?.subject ?? subjectSrc) : subjectSrc;
+    const leadBodySrc = byCategory ? (leadTpl?.body ?? bodySrc) : bodySrc;
+    const attachments = attachmentsByTemplate.get(String(leadTpl?._id || '')) || [];
+
     // 변수 치환 (받는사람/회사명만 · 발송자는 서명으로)
     const vars = buildVarsFromLead(lead);
-    const renderedSubject = renderTemplate(subjectSrc, vars);
-    const renderedBody = renderTemplate(bodySrc, vars);
+    const renderedSubject = renderTemplate(leadSubjectSrc, vars);
+    const renderedBody = renderTemplate(leadBodySrc, vars);
 
     // HTML 모드일 때 폰트 wrapping + 서명 블록 자동 추가
     let htmlPayload: string | undefined;
@@ -191,36 +247,42 @@ export async function POST(req: Request) {
     const dryRunEnv = process.env.MAIL_DRY_RUN === '1';
     const dryRun = forceDryRun || dryRunEnv;
 
-    let result;
-    if (dryRun) {
-      console.log(`[mail:send:DRY_RUN] to=${to} subject=${renderedSubject.slice(0, 60)}`);
-      result = { ok: true, dryRun: true, messageId: `dryrun-${Date.now()}-${lead.leadId}` };
-    } else {
-      result = await sendMail({
-        to,
-        subject: renderedSubject,
-        html: htmlPayload,
-        text: textPayload,
-        attachments,
-        smtpConfig,
-        fromOverride,
-        sentCopyAccount: accProfile,   // 보낸메일함에 사본을 남긴다
-        // 이 경로는 우리가 먼저 보내는 콜드메일이다 = 광고성 정보.
-        // 기본값을 true 로 두는 이유: 빠뜨리면 과태료가 나오는 쪽이고,
-        // 잘못 붙는 쪽은 메일이 조금 정중해질 뿐이다. 광고가 아닌 안내 메일을
-        // 이 경로로 보내야 하면 요청 본문에 ad:false 를 명시한다.
-        ad: body.ad !== false,
-        ignoreNightBlock: body.ignoreNightBlock === true,
-      });
-    }
+    // DRY RUN 이어도 sendMail 을 통과시킨다.
+    // 여기서 "보낸 셈 치고" 빠져나가면 (광고) 표기·수신거부·야간차단이 적용되기 전의
+    // 제목이 로그에 남아서, 미리보기와 실제 발송이 달라진다.
+    const result = await sendMail({
+      to,
+      subject: renderedSubject,
+      html: htmlPayload,
+      text: textPayload,
+      attachments,
+      smtpConfig,
+      fromOverride,
+      sentCopyAccount: accProfile,   // 보낸메일함에 사본을 남긴다
+      // 이 경로는 우리가 먼저 보내는 콜드메일이다 = 광고성 정보.
+      // 기본값을 true 로 두는 이유: 빠뜨리면 과태료가 나오는 쪽이고,
+      // 잘못 붙는 쪽은 메일이 조금 정중해질 뿐이다. 광고가 아닌 안내 메일을
+      // 이 경로로 보내야 하면 요청 본문에 ad:false 를 명시한다.
+      ad: body.ad !== false,
+      ignoreNightBlock: body.ignoreNightBlock === true,
+      dryRun,
+    });
 
     if (result.ok) {
       sent++;
       results.push({ leadId: lead.leadId, ok: true, messageId: result.messageId, dryRun });
       // emailHistory 추가 + 성공 시 stage → 'contacted' 자동 이동
       // (DRY_RUN 은 실제 발송 아님 → stage 변경 안 함)
+      // DRY RUN 은 아무 기록도 남기지 않는다.
+      //
+      // 예전에는 여기서 status:'sent' 이력을 그대로 남겼다. 실제로는 한 통도 안 나갔는데
+      // 리드에는 "보냄"이 찍히고, 그 이력을 세는 과도발송 가드(send-limits)가 함께 올라가서
+      // 정작 진짜로 보낼 때 "이미 N번 보냈다"며 막혔다. 시험 삼아 한 번 눌러 본 것이
+      // 실제 발송을 막는 셈이라, 테스트할수록 시스템이 잠긴다.
+      if (dryRun) continue;
+
       const setUpdate: any = { lastEmailSentAt: now };
-      if (!dryRun && lead.stage !== 'contacted' && lead.stage !== 'replied' && lead.stage !== 'negotiating' && lead.stage !== 'partner') {
+      if (lead.stage !== 'contacted' && lead.stage !== 'replied' && lead.stage !== 'negotiating' && lead.stage !== 'partner') {
         setUpdate.stage = 'contacted';
         setUpdate.stageChangedAt = now;
       }
@@ -232,7 +294,10 @@ export async function POST(req: Request) {
               emailHistory: {
                 subject: renderedSubject,
                 body: renderedBody.slice(0, 500),
-                templateId: templateId || '',
+                // 요청에 실린 값이 아니라 **실제로 쓴 양식**을 남긴다 —
+                // 카테고리별 발송은 리드마다 양식이 달라서, 요청값을 남기면
+                // 나중에 "이 업체에 무슨 문구가 갔나" 를 되짚을 수 없다.
+                templateId: String(leadTpl?._id || templateId || ''),
                 to,
                 sentAt: now,
                 status: 'sent',
@@ -248,6 +313,7 @@ export async function POST(req: Request) {
     } else {
       failed++;
       results.push({ leadId: lead.leadId, ok: false, error: result.error });
+      if (dryRun) continue;   // 위와 같은 이유 — 시험 삼아 돌린 것이 이력에 남으면 안 된다
       historyOps.push({
         updateOne: {
           filter: { leadId: lead.leadId },
@@ -255,7 +321,10 @@ export async function POST(req: Request) {
             $push: {
               emailHistory: {
                 subject: renderedSubject,
-                templateId: templateId || '',
+                // 요청에 실린 값이 아니라 **실제로 쓴 양식**을 남긴다 —
+                // 카테고리별 발송은 리드마다 양식이 달라서, 요청값을 남기면
+                // 나중에 "이 업체에 무슨 문구가 갔나" 를 되짚을 수 없다.
+                templateId: String(leadTpl?._id || templateId || ''),
                 to,
                 sentAt: now,
                 status: 'failed',

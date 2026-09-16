@@ -231,6 +231,7 @@ let state = {
   //   'no-email'   - Email 필드 비었거나 "Not found" — 승인 불가
   verifiedSubFilter: 'all',
   tierFilter: null,   // 검증완료 A/B/C 등급 필터
+  categoryFilter: null,  // 국내판 1차 축 — 목록 위 탭(학교·공공기관 / 기업 / 병·의원 / …)
 
   // 검증완료 페이지 상단 상위 탭 (성공/실패)
   //   'success' (default) - verified stage 리드
@@ -562,7 +563,8 @@ async function loadServerPage(stage, page, sub, force, tier) {
   // 검색어는 지금 보고 있는 단계 안에서만 좁힌다 (화면을 옮기지 않는다)
   const q = (state.query || '').trim();
   const region = state.region && state.region !== 'All' ? state.region : '';
-  const cacheKey = `${stage}::${sub || ''}::${tier || ''}::${page}::${_leadSort}::${q}::${region}`;
+  const category = state.categoryFilter || '';
+  const cacheKey = `${stage}::${sub || ''}::${tier || ''}::${category}::${page}::${_leadSort}::${q}::${region}`;
   const now = Date.now();
   if (!force && _serverPageCache && _serverPageCache.cacheKey === cacheKey && (now - _serverPageCache.ts) < SERVER_PAGE_CACHE_TTL_MS) {
     return _serverPageCache;
@@ -575,10 +577,11 @@ async function loadServerPage(stage, page, sub, force, tier) {
   params.set('limit', '50');
   if (q) params.set('q', q);
   if (region) params.set('region', region);
+  if (category) params.set('category', category);
   if (_leadSort === 'reco' || _leadSort === 'region') params.set('sort', _leadSort);
   // 지역 목록은 단계가 바뀔 때만 다시 센다 — 페이지를 넘길 때마다 집계할 이유가 없다.
   // 검증 성공에서는 성공한 곳의 지역, 검증 실패로 넘어가면 실패한 곳의 지역가 뜬다.
-  const facetKey = `${stage}::${sub || ''}::${tier || ''}`;
+  const facetKey = `${stage}::${sub || ''}::${tier || ''}::${category}`;
   const wantCountries = _regionFacet.key !== facetKey;
   if (wantCountries) params.set('countries', '1');
 
@@ -1632,6 +1635,9 @@ async function _renderInner(seq) {
       if (stale()) return;
       const totalForBanner = pageData.total;
       renderStageBanner(displayInfo, totalForBanner, totalForBanner);
+      // 국내판 카테고리 탭 (public/kr-screens.js) — 목록 위에 붙는다.
+      // 어느 단계를 보든 "지금 학교 건인가 병원 건인가"를 먼저 갈라야 한다.
+      renderCategoryTabs(serverStage);
       // 검증완료 페이지 상단에 성공/실패 탭
       if (s.stage === 'verified' && counts) {
         renderVerifiedResultTabs(counts.stages.verified, counts.stages.failed);
@@ -1778,6 +1784,10 @@ async function _renderInner(seq) {
     return;
   }
   // ── 국내판 전용 화면 (public/kr-screens.js) ──
+  // 단계 목록이 아닌 화면으로 옮기면 카테고리 탭을 걷어낸다
+  if (typeof state.view === 'string' && !state.view.startsWith('pipeline-')) {
+    clearCategoryTabs();
+  }
   if (state.view === "tool-crawl") {
     els.viewTitle.textContent = "🔎 크롤링 실행";
     els.viewSubtitle.textContent = "네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다.";
@@ -3059,6 +3069,9 @@ var _composeState = {
   isOpen: false,
   recipientIds: [],
   templateId: null,
+  // 리드마다 그 리드의 카테고리 양식으로 보낸다 (국내판).
+  // 켜면 아래 제목·본문 편집은 쓰지 않는다 — 양식이 리드마다 다르기 때문이다.
+  byCategory: false,
   mailAccountId: null,
   subject: '',
   body: '',
@@ -3355,8 +3368,23 @@ function renderComposeModal() {
               ` : ''}
             </div>
 
+            <!-- 카테고리별 양식 발송 (국내판) -->
+            <div style="padding:10px 12px;border:1px solid ${_composeState.byCategory ? '#3FA6D3' : 'var(--border)'};
+                        border-radius:10px;background:${_composeState.byCategory ? 'rgba(63,166,211,.08)' : 'transparent'}">
+              <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+                <input id="composeByCategory" type="checkbox" ${_composeState.byCategory ? 'checked' : ''} style="margin-top:2px">
+                <span>
+                  <span style="font-size:12.5px;font-weight:800;color:var(--text-primary)">🏷 카테고리별 양식으로 보내기</span>
+                  <span style="display:block;font-size:11px;color:var(--text-tertiary);line-height:1.55;margin-top:2px">
+                    업체마다 그 업체 카테고리(학교·기업·병의원·리조트·스포츠)에 맞는 양식이 나갑니다.
+                    켜면 아래 제목·본문은 쓰지 않습니다.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <!-- 템플릿 선택 -->
-            <div>
+            <div style="${_composeState.byCategory ? 'opacity:.4;pointer-events:none' : ''}">
               <label style="font-size:11px;color:var(--text-secondary);font-weight:700">템플릿</label>
               <select id="composeTemplateSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                 <option value="">— 커스텀 (템플릿 없이) —</option>
@@ -3498,6 +3526,10 @@ function renderComposeModal() {
   };
   document.addEventListener('keydown', escHandler);
 
+  document.getElementById('composeByCategory')?.addEventListener('change', (e) => {
+    _composeState.byCategory = !!e.target.checked;
+    renderComposeModal();
+  });
   document.getElementById('composeTemplateSel')?.addEventListener('change', (e) => {
     const tid = e.target.value;
     _composeState.templateId = tid || null;
@@ -3660,9 +3692,16 @@ async function handleComposeSend() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         leadIds: recipients,
-        templateId: _composeState.templateId || undefined,
-        subject: _composeState.subject,
-        body: _composeState.body,
+        // 카테고리별 발송이면 제목·본문을 아예 보내지 않는다.
+        // 보내면 서버가 그것을 '직접 쓴 내용' 으로 보고 모든 업체에 똑같이 써 버린다
+        // (explicitSubject 가 양식보다 우선한다).
+        ...(_composeState.byCategory
+          ? { byCategory: true }
+          : {
+              templateId: _composeState.templateId || undefined,
+              subject: _composeState.subject,
+              body: _composeState.body,
+            }),
         bodyIsHtml: true,
         fontFamily: _composeState.fontFamily,
         fontSize: _composeState.fontSize,
@@ -6490,16 +6529,12 @@ async function renderLegacyPage() {
 // 판정한 건은 대기열에서 빠져 뒤가 당겨지므로, 건너뛴 수만큼만 밀어준다.
 var _review = { queue: [], idx: 0, skip: 0, source: '', batch: '', from: '', remaining: 0, queued: 0, failed: 0, decided: new Map(), busy: false };
 
-// 분류 이름 — 화면은 한글, 값은 DB 그대로 (Lead.Category)
-var REVIEW_CATEGORY = {
-  'Distributor':        '유통사',
-  'Brand/Manufacturer': '브랜드·제조사',
-  'Retail Chain':       '리테일 체인',
-  'Online Store':       '온라인몰',
-  'Retailer':           '매장·편집숍',
-  'Clinic':             '클리닉',
-  'Other':              '기타',
-};
+// 분류 배지는 국내 카테고리(lead.category)를 쓴다.
+//
+// 예전에는 Lead.Category(대문자) 라는 별도 칸을 봤다. 해외판이 바이어를
+// 'Distributor' · 'Retail Chain' 처럼 나누던 칸인데, 국내판에는 값이 한 건도 없다.
+// 소문자 category 와 이름이 한 글자 차이라 어느 쪽을 읽는지 늘 헷갈렸고,
+// 실제로 배지가 아무 데서도 안 뜨는 원인이었다. 칸을 하나로 합쳤다.
 
 /**
  * 다음 묶음(30곳)을 받아온다.
@@ -6667,8 +6702,7 @@ async function renderReviewPage() {
           </h2>
           <span style="flex:none;padding:6px 14px;background:var(--bg-surface-alt);border-radius:99px;
                        font-size:13px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Region || '—')}</span>
-          ${lead.Category ? `<span style="flex:none;padding:6px 14px;background:#eef2ff;border-radius:99px;
-                       font-size:13px;font-weight:700;color:#4338ca">${escapeHtml(REVIEW_CATEGORY[lead.Category] || lead.Category)}</span>` : ''}
+          ${lead.category ? `<span style="flex:none">${krCategoryBadge(lead.category)}</span>` : ''}
           ${lead.recoScore ? `<span title="발송 우선순위 점수" style="flex:none;padding:6px 13px;background:#ecfdf5;
                        border-radius:99px;font-size:13px;font-weight:800;color:#047857">추천 ${lead.recoScore}</span>` : ''}
         </div>
@@ -11837,13 +11871,13 @@ async function renderOutboxPage() {
   ]);
 
   const all = (schedData && schedData.items) || [];
-  const pending  = all.filter((i) => i.status === 'pending');
+  let pending    = all.filter((i) => i.status === 'pending');
   const sentSched = all.filter((i) => i.status === 'sent');
   const failed   = all.filter((i) => i.status === 'failed');
   const canceled = all.filter((i) => i.status === 'canceled');
 
   const queuedLeads = ((queuedRes && queuedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
-  const sentLeads = ((contactedRes && contactedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
+  let sentLeads = ((contactedRes && contactedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
 
   // 상세 팝업(openEditModal)은 baseLeads 에서 찾는다 — 여기서 가져온 것도 보이게 합친다
   const known = new Set(baseLeads.map((l) => l.id));
@@ -11855,8 +11889,20 @@ async function renderOutboxPage() {
   const hasEmail = (l) => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
   // 보낼 메일 = 사람이 [발송 리스트로 옮기기] 를 눌러 queued 로 올린 것만.
   // 검증만 끝난 것(verified)까지 여기 넣으면 고르는 단계가 없어진다.
-  const ready = queuedLeads.filter((l) =>
+  let ready = queuedLeads.filter((l) =>
     !l.deleted && hasEmail(l) && !scheduledLeadIds.has(l.leadId));
+
+  // ── 분류별로 나눠 보기 (public/kr-screens.js) ──────────────
+  // 224곳이 한 덩어리면 '전체 발송' 말고 할 수 있는 일이 없는데, 나가는 문구는
+  // 분류마다 다르다. 실제 작업 단위는 "리조트 139곳을 리조트 양식으로" 이므로
+  // 화면도 그 단위로 갈라 둔다. 아래부터는 거른 목록으로만 움직인다.
+  const leadLookup = new Map(baseLeads.map((l) => [l.leadId || l.id, l]));
+  const readyAll = ready;
+  const pendingAll = pending;
+  const sentLeadsAll = sentLeads;
+  ready = krFilterByCategory(readyAll, leadLookup);
+  pending = krFilterByCategory(pendingAll, leadLookup);
+  sentLeads = krFilterByCategory(sentLeadsAll, leadLookup);
 
   _outboxReadyIds = ready.map((l) => l.leadId);
   outboxSyncCompose(ready);
@@ -11897,11 +11943,18 @@ async function renderOutboxPage() {
       </div>
       ${outboxLockBannerHtml(lock, ready.length)}
 
+      <!-- 위 칸의 숫자는 분류를 거르기 전 '전체'다 — 분류를 고른 채로도
+           "원래 몇 곳짜리 일인지"가 보여야 한다. -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
-        ${tab('ready',     '✉️', '보낼 메일',  ready.length,      '#2563eb')}
-        ${tab('scheduled', '📅', '예약 발송',  pending.length,    '#b45309')}
-        ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeads.length, '#166534')}
+        ${tab('ready',     '✉️', '보낼 메일',  readyAll.length,      '#2563eb')}
+        ${tab('scheduled', '📅', '예약 발송',  pendingAll.length,    '#b45309')}
+        ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeadsAll.length, '#166534')}
       </div>
+
+      ${krOutboxCategoryBarHtml(
+        _outboxTab === 'ready' ? readyAll : _outboxTab === 'scheduled' ? pendingAll : sentLeadsAll,
+        leadLookup,
+      )}
 
       <div id="outboxBody"></div>
     </div>`;
@@ -11910,6 +11963,8 @@ async function renderOutboxPage() {
   if (_outboxTab === 'ready')     body.innerHTML = outboxReadyHtml(ready, lock);
   if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled);
   if (_outboxTab === 'sent')      body.innerHTML = outboxSentHtml(sentSched, sentLeads);
+
+  krBindOutboxCategoryBar(() => renderOutboxPage());
 
   document.querySelectorAll('.outbox-tab').forEach((b) =>
     b.addEventListener('click', (e) => {
@@ -12312,7 +12367,16 @@ function openSendLogicModal(lock) {
  */
 async function runOutboxCampaign(ready, lock) {
   if (!ready.length) return;
-  if (!_outboxCompose.templateId) {
+
+  /**
+   * 분류를 안 고르고 전체를 보낼 때는 **리드마다 그 리드 분류의 양식**으로 나간다
+   * (서버의 byCategory). 224곳을 한 양식으로 보내면 호텔 문구가 요양병원으로 간다.
+   *
+   * 분류를 하나 골라 둔 상태면 화면에 보이는 것이 그 분류뿐이므로, 위에서 고른
+   * 양식 하나를 그대로 쓴다 — 사람이 그 분류 전용 문구를 보면서 고른 것이다.
+   */
+  const perCategory = !_outboxCategory;
+  if (!perCategory && !_outboxCompose.templateId) {
     alert('메일 양식을 먼저 고르세요.\n[📝 메일 양식]에서 만들 수 있습니다.');
     return;
   }
@@ -12329,8 +12393,11 @@ async function runOutboxCampaign(ready, lock) {
   }
 
   const lines = [
-    `${n.toLocaleString()}곳에 메일을 보냅니다.`,
+    `${krCurrentCategoryLabel() ? '[' + krCurrentCategoryLabel() + '] ' : ''}${n.toLocaleString()}곳에 메일을 보냅니다.`,
     '',
+    perCategory
+      ? '보내는 문구  업체마다 그 업체 분류의 양식 (학교·기업·병의원·리조트·스포츠)'
+      : '보내는 문구  고른 양식 하나',
     `보내는 주소  ${acc ? acc.smtpUser : '(기본 계정)'}`,
     `내보내기     ${_outboxCompose.startNow ? '지금부터' : new Date(startAt).toLocaleString('ko-KR')} · ${size}곳씩 ${gap}분 간격 (${batches}번)`,
     _outboxCompose.followUp
@@ -12353,7 +12420,9 @@ async function runOutboxCampaign(ready, lock) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         leadIds: ready.map((l) => l.leadId),
-        templateId: _outboxCompose.templateId,
+        ...(perCategory
+          ? { byCategory: true }
+          : { templateId: _outboxCompose.templateId }),
         mailAccountId: _outboxCompose.mailAccountId || undefined,
         startAt: startAt ? new Date(startAt).toISOString() : undefined,
         batchSize: size,
@@ -12378,7 +12447,11 @@ async function runOutboxCampaign(ready, lock) {
     renderOutboxPage();
   } catch (e) {
     alert('발송 예약 실패: ' + (e.message || 'unknown'));
-    if (btn) { btn.disabled = false; btn.textContent = `✉️ ${n.toLocaleString()}곳에 보내기`; }
+    if (btn) {
+      const catLabel = krCurrentCategoryLabel();
+      btn.textContent = `✉️ ${catLabel ? catLabel + ' ' : ''}${n.toLocaleString()}곳에 보내기`;
+      btn.disabled = false;
+    }
   }
 }
 
@@ -12793,9 +12866,11 @@ function outboxReadyHtml(ready, lock) {
 
       <div style="padding:12px 17px;border-top:1px solid var(--border-default);
                   display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:var(--bg-surface-alt)">
+        <!-- 무엇을 보내는지 버튼에 박아 둔다. 분류를 고른 채로 보내는 일이 많아서,
+             "전체인 줄 알고 눌렀는데 리조트만 나갔다" 를 막아야 한다. -->
         <button id="outboxSendBtn" type="button" class="button primary"
           style="font-size:14px;font-weight:700;padding:11px 22px">
-          ✉️ ${ready.length.toLocaleString()}곳에 보내기${lock?.locked ? ' 🔒' : ''}
+          ✉️ ${krCurrentCategoryLabel() ? escapeHtml(krCurrentCategoryLabel()) + ' ' : ''}${ready.length.toLocaleString()}곳에 보내기${lock?.locked ? ' 🔒' : ''}
         </button>
         <span id="obPlanHint" style="font-size:12px;color:var(--text-tertiary)"></span>
       </div>
@@ -13162,7 +13237,9 @@ function outboxLeadTableHtml(leads, total, showSent) {
           <thead>
             <tr style="background:var(--surface-2);color:var(--text-secondary);text-align:left">
               <th style="padding:9px 14px;font-weight:700">회사 · 업종</th>
-              <th style="padding:9px 12px;font-weight:700;width:110px">지역</th>
+              <!-- 분류가 곧 '어떤 문구가 나가는가' 라서 회사 바로 옆에 둔다 -->
+              <th style="padding:9px 12px;font-weight:700;width:104px">분류</th>
+              <th style="padding:9px 12px;font-weight:700;width:96px">지역</th>
               <th style="padding:9px 12px;font-weight:700;width:210px">이메일</th>
               <th style="padding:9px 12px;font-weight:700;width:190px">홈페이지</th>
               <th style="padding:9px 12px;font-weight:700;width:104px">발송</th>
@@ -13183,6 +13260,7 @@ function outboxLeadTableHtml(leads, total, showSent) {
                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                        title="${escapeAttr(l.TypeKo || l.Type)}">${escapeHtml(truncate(l.TypeKo || l.Type, 62))}</div>` : ''}
                 </td>
+                <td style="padding:8px 12px;white-space:nowrap">${krCategoryBadge(l.category)}</td>
                 <td style="padding:8px 12px;white-space:nowrap;color:var(--text-secondary)">${escapeHtml(l.Region || '—')}</td>
                 <td style="padding:8px 12px;font-family:monospace;font-size:11.5px;color:var(--text-secondary);
                            max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"

@@ -309,3 +309,188 @@ async function renderCategoriesPage() {
       '<thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' + uncategorized
     ) + '</div>';
 }
+
+/* ── 리드 목록 위 카테고리 탭 ─────────────────────────────────────
+
+   국내판의 1차 축은 카테고리다. 해외판은 이 자리에 A/B/C 등급 카드를 뒀지만
+   (지금은 꺼져 있다), 국내는 "지금 학교 건을 보고 있나 병원 건을 보고 있나"가
+   먼저다 — 보낼 메일 양식이 카테고리마다 다르기 때문이다.
+
+   숫자는 **지금 보고 있는 단계 안에서만** 센다. 전체 건수를 띄우면
+   [기업 244]를 눌렀는데 목록에 12건만 나오는 화면이 된다.
+   ───────────────────────────────────────────────────────────── */
+
+async function renderCategoryTabs(serverStage) {
+  const containerId = 'krCategoryTabs';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    const banner = document.getElementById('stageBannerContainer');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(container, banner.nextSibling);
+    } else if (els.content && els.content.parentNode) {
+      els.content.parentNode.insertBefore(container, els.content);
+    }
+  }
+
+  let data;
+  try {
+    data = await safeJsonFetch('/api/leads/category-counts?stage=' + encodeURIComponent(serverStage || ''));
+  } catch {
+    container.innerHTML = '';
+    return;
+  }
+  if (!data || !data.success) { container.innerHTML = ''; return; }
+
+  const cur = state.categoryFilter || null;
+  const tab = (key, label, n) => {
+    const active = cur === key;
+    const dim = n === 0 && !active;
+    return '<button type="button" class="kr-cat-tab" data-cat="' + (key || '') + '" ' +
+      (dim ? 'disabled ' : '') +
+      'style="padding:7px 14px;font-size:13px;font-weight:700;border-radius:999px;cursor:' +
+      (dim ? 'default' : 'pointer') + ';transition:all .15s;' +
+      'border:1px solid ' + (active ? '#3FA6D3' : 'var(--border-default)') + ';' +
+      'background:' + (active ? '#3FA6D3' : 'var(--bg-surface)') + ';' +
+      'color:' + (active ? '#fff' : dim ? 'var(--text-tertiary)' : 'var(--text-secondary)') + ';' +
+      'opacity:' + (dim ? '.5' : '1') + '">' +
+      escapeHtml(label) +
+      '<span style="margin-left:6px;font-weight:800;opacity:' + (active ? '.95' : '.7') + '">' +
+      n.toLocaleString() + '</span></button>';
+  };
+
+  container.innerHTML =
+    '<div style="margin-top:10px;padding:10px;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px">' +
+    '<div style="font-size:11px;color:var(--text-secondary);font-weight:700;margin-bottom:8px">' +
+    '🏷 타깃 카테고리 — 눌러서 나눠 보기' +
+    '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    tab('', '전체', data.total) +
+    data.categories.map((c) => tab(c.key, c.label, c.n)).join('') +
+    (data.uncategorized ? tab('__none', '미분류', data.uncategorized) : '') +
+    '</div></div>';
+
+  container.querySelectorAll('.kr-cat-tab').forEach((el) => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.cat || null;
+      state.categoryFilter = key || null;
+      resetPagination();
+      _serverPageCache = null;
+      render();
+    });
+  });
+}
+
+function clearCategoryTabs() {
+  const c = document.getElementById('krCategoryTabs');
+  if (c && c.parentNode) c.parentNode.removeChild(c);
+}
+
+/* ── 발송 관리 안의 카테고리 분류 ─────────────────────────────────
+
+   [보낼 메일] · [예약 발송] · [발송 완료] 각각 안에서 다시 카테고리로 나눈다.
+
+   왜 필요한가: 보낼 메일 224곳이 한 덩어리로 보이면 "전체 발송" 말고 할 수 있는
+   일이 없다. 그런데 나가는 문구는 카테고리마다 다르므로, 실제로는 리조트 139곳을
+   리조트 양식으로 한 번, 스포츠 45곳을 스포츠 양식으로 한 번 보내는 일이 된다.
+   화면이 그 단위로 갈라져 있어야 "지금 무엇을 보내는 중인지"가 분명해진다.
+   ───────────────────────────────────────────────────────────── */
+
+var _outboxCategory = null;   // null = 전체
+
+/** 리드든 예약이든 카테고리를 꺼낸다 (예약은 리드를 거쳐서 찾는다) */
+function krCategoryOf(item, leadLookup) {
+  if (!item) return '';
+  if (item.category) return item.category;
+  if (item.leadId && leadLookup) {
+    const l = leadLookup.get(item.leadId);
+    if (l && l.category) return l.category;
+  }
+  return '';
+}
+
+/**
+ * 지금 탭에 있는 항목들을 카테고리로 센 뒤 칩 줄을 그린다.
+ * 숫자가 0인 카테고리는 흐리게 두되 없애지는 않는다 — 자리가 사라지면
+ * "원래 없는 분류인가" 와 "이 탭에 없는 것뿐인가" 가 구분되지 않는다.
+ */
+function krOutboxCategoryBarHtml(items, leadLookup) {
+  const counts = {};
+  let none = 0;
+  for (const it of items) {
+    const c = krCategoryOf(it, leadLookup);
+    if (!c) { none++; continue; }
+    counts[c] = (counts[c] || 0) + 1;
+  }
+
+  const chip = (key, label, n) => {
+    const on = (_outboxCategory || '') === (key || '');
+    const dim = n === 0 && !on;
+    return '<button type="button" class="kr-outbox-cat" data-cat="' + (key || '') + '"' +
+      (dim ? ' disabled' : '') +
+      ' style="padding:6px 13px;font-size:12.5px;font-weight:700;border-radius:999px;' +
+      'cursor:' + (dim ? 'default' : 'pointer') + ';transition:all .15s;' +
+      'border:1px solid ' + (on ? '#3FA6D3' : 'var(--border-default)') + ';' +
+      'background:' + (on ? '#3FA6D3' : 'var(--bg-surface)') + ';' +
+      'color:' + (on ? '#fff' : dim ? 'var(--text-tertiary)' : 'var(--text-secondary)') + ';' +
+      'opacity:' + (dim ? '.45' : '1') + '">' +
+      escapeHtml(label) + '<span style="margin-left:6px;font-weight:800">' + n.toLocaleString() + '</span>' +
+      '</button>';
+  };
+
+  return '<div style="padding:10px 12px;margin-bottom:12px;background:var(--bg-surface);' +
+    'border:1px solid var(--border-default);border-radius:10px">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:7px">' +
+    '🏷 분류별로 나눠서 보냅니다 — 분류마다 나가는 문구가 다릅니다' +
+    '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    chip('', '전체', items.length) +
+    KR_CATEGORIES.map((c) => chip(c.key, c.label, counts[c.key] || 0)).join('') +
+    (none ? chip('__none', '미분류', none) : '') +
+    '</div></div>';
+}
+
+/** 칩 클릭 연결 — 다시 그리는 일은 호출자가 넘긴 함수가 한다 */
+function krBindOutboxCategoryBar(rerender) {
+  document.querySelectorAll('.kr-outbox-cat').forEach((b) => {
+    b.addEventListener('click', () => {
+      const key = b.dataset.cat || null;
+      _outboxCategory = key || null;
+      rerender();
+    });
+  });
+}
+
+/** 지금 고른 분류로 거른다 */
+function krFilterByCategory(items, leadLookup) {
+  if (!_outboxCategory) return items;
+  if (_outboxCategory === '__none') return items.filter((i) => !krCategoryOf(i, leadLookup));
+  return items.filter((i) => krCategoryOf(i, leadLookup) === _outboxCategory);
+}
+
+/** 지금 고른 분류의 이름 (버튼 문구에 쓴다) */
+function krCurrentCategoryLabel() {
+  if (!_outboxCategory) return '';
+  if (_outboxCategory === '__none') return '미분류';
+  const c = KR_CATEGORIES.find((x) => x.key === _outboxCategory);
+  return c ? c.label : '';
+}
+
+/** 목록 행에 붙이는 분류 배지 — 어느 화면에서 보든 같은 색·같은 말로 보여야 한다 */
+const KR_CATEGORY_STYLE = {
+  public:  { bg: '#e0f2fe', fg: '#075985', short: '학교·공공' },
+  company: { bg: '#ede9fe', fg: '#5b21b6', short: '기업' },
+  medical: { bg: '#dcfce7', fg: '#166534', short: '병·의원' },
+  resort:  { bg: '#fef3c7', fg: '#92400e', short: '리조트·호텔' },
+  sports:  { bg: '#ffe4e6', fg: '#9f1239', short: '스포츠' },
+};
+
+function krCategoryBadge(category) {
+  const st = KR_CATEGORY_STYLE[category];
+  if (!st) {
+    return '<span style="font-size:11px;color:var(--text-quaternary)">미분류</span>';
+  }
+  const full = (KR_CATEGORIES.find((c) => c.key === category) || {}).label || st.short;
+  return '<span title="' + escapeAttr(full) + '" style="display:inline-block;padding:2px 8px;' +
+    'font-size:11px;font-weight:700;border-radius:999px;white-space:nowrap;' +
+    'background:' + st.bg + ';color:' + st.fg + '">' + escapeHtml(st.short) + '</span>';
+}

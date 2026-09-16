@@ -81,6 +81,14 @@ export interface SendMailInput {
   ad?: boolean;
   /** 야간 차단 무시 (긴급 시에만. 광고성 메일이면 과태료 소지가 있다) */
   ignoreNightBlock?: boolean;
+  /**
+   * 이 한 통만 실제 발송 없이 로그만 남긴다 (env MAIL_DRY_RUN 과 무관하게).
+   *
+   * 호출자가 자기 쪽에서 "보낸 셈 치고" 빠져나가면 안 된다. 그러면 제목에
+   * (광고) 를 붙이고 수신거부를 다는 단계를 건너뛰게 되어, 미리보기로 본 제목과
+   * 실제로 나갈 제목이 달라진다. 실제로 그랬다 — 미리보기에는 (광고) 가 없었다.
+   */
+  dryRun?: boolean;
 }
 
 export interface SendMailResult {
@@ -164,7 +172,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     input = { ...input, subject: applied.subject, html: applied.html };
   }
 
-  const dryRun = process.env.MAIL_DRY_RUN === '1';
+  const dryRun = input.dryRun === true || process.env.MAIL_DRY_RUN === '1';
   if (dryRun) {
     console.log('[mailer:DRY_RUN]', input.to, '·', input.subject, input.smtpConfig ? `(via ${input.smtpConfig.user})` : '');
     return { ok: true, dryRun: true, messageId: `dryrun-${Date.now()}` };

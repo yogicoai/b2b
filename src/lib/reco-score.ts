@@ -6,28 +6,29 @@
  * 순서만 정하고, 왜 그 순서인지 근거를 함께 돌려준다.
  *
  * 점수를 매기는 축은 세 가지다.
- *   1. 거래 규모   — 성사됐을 때 얼마나 큰가 (유통사 한 곳 = 리테일 여러 곳)
- *   2. 담당자 도달 — 그 주소가 구매 담당 책상까지 가는가
- *   3. K-뷰티 실적 — 이미 한국 제품을 팔아본 곳인가
+ *   1. 납품 규모   — 한 번에 몇 개가 들어갈 곳인가
+ *   2. 담당자 도달 — 그 주소가 구매·총무 담당 책상까지 가는가
+ *   3. 규모 신호   — 상호·도메인에 기관·체인임이 드러나는가
  *
- * ⚠️ Confidence 는 일부러 뺐다. 실측해 보니 Brand/Manufacturer 101건 중 97건이
- *    High, Online Store 163건은 전부 Medium 이었다. 분류를 다르게 적은 것일 뿐
- *    독립된 신호가 아니라서, 넣으면 같은 사실을 두 번 세게 된다.
+ * 해외판에서는 1번이 'Distributor / Retail Chain' 같은 바이어 유형이었고
+ * 3번이 'K-뷰티를 이미 취급하는가' 였다. 국내는 파는 방식이 달라서 둘 다 바뀌었다 —
+ * 우리가 찾는 것은 재판매할 유통사가 아니라, 자기 공간에 빈백을 깔 곳이다.
  */
+
+import { SCALE_SIGNALS } from './lead-tier';
 
 export interface RecoResult {
   score: number;          // 0~100
   reasons: string[];      // 화면에 그대로 보여줄 근거
 }
 
-/** 1. 거래 규모 — 성사 시 매출 크기와 채널 파급력 */
+/** 1. 납품 규모 — 그 공간에 한 번에 몇 개가 들어가는가 */
 const CATEGORY_SCORE: Record<string, [number, string]> = {
-  'Distributor':        [30, '유통사 — 한 곳 뚫리면 여러 채널로 퍼짐'],
-  'Retail Chain':       [25, '리테일 체인 — 매장 수만큼 물량'],
-  'Brand/Manufacturer': [20, '브랜드·제조사 — 역방향 제안(그쪽 제품을 아시아로)도 가능'],
-  'Retailer':           [15, '매장·편집숍'],
-  'Online Store':       [12, '온라인몰'],
-  'Clinic':             [8,  '클리닉 — 물량은 작음'],
+  resort:  [30, '리조트·호텔 — 로비·키즈존·객실까지 한 번에 물량이 큼'],
+  public:  [26, '공공·교육 — 조달 납품이고 시설 단위로 움직임'],
+  company: [22, '기업 — 사옥·연수원 단위. 복지 예산이 잡혀 있음'],
+  medical: [16, '병·의원 — 대기실 중심이라 물량은 중간'],
+  sports:  [14, '스포츠시설 — 라운지·회복공간 중심'],
 };
 
 /**
@@ -35,10 +36,10 @@ const CATEGORY_SCORE: Record<string, [number, string]> = {
  * 고객지원(support/help) 주소가 제일 나쁘다. 제안 메일이 문의 티켓에 묻힌다.
  */
 const PREFIX_SCORE: Array<[RegExp, number, string]> = [
-  [/^(b2b|wholesale|purchas|buying|buyer|procure|vendor|supplier|partner|bd|business)/i,
-    25, 'B2B·구매 담당 주소 — 제안이 바로 닿음'],
-  [/^(sales|commercial|export|import|trade|marketing)/i,
-    18, '영업·수출입 담당 주소'],
+  [/^(gu|purchas|buying|buyer|procure|vendor|supplier|partner|b2b|bd|business|chongmu|ga)/i,
+    25, '구매·총무 담당 주소 — 제안이 바로 닿음'],
+  [/^(sales|marketing|plan|project|facility|manage)/i,
+    18, '영업·기획·시설 담당 주소'],
   [/^(office|kontakt|contact|hello|hola|bonjour|ciao|mail|inquiry|enquir)/i,
     10, '대표 문의 주소'],
   [/^(info|admin)/i, 8, '일반 대표 주소'],
@@ -46,18 +47,13 @@ const PREFIX_SCORE: Array<[RegExp, number, string]> = [
     3, '고객지원 주소 — 제안 메일이 묻히기 쉬움'],
 ];
 
-/** 한국 브랜드를 이미 취급 중인지 — 카테고리 이해도가 곧 회신율이다 */
-const KR_BRAND = /cosrx|beauty of joseon|anua|medicube|skin1004|torriden|round lab|laneige|innisfree|tirtir|numbuz|axis-?y|biodance|dr\.?\s*althea|purito|isntree|tocobo|mixsoon|beauty ?of ?joseon|k-?beauty|korean/i;
-
-const brandCount = (s?: string): number =>
-  String(s || '').split(/[,;·]/).map((x) => x.trim()).filter((x) => x.length > 1).length;
 
 export function recoScore(lead: any): RecoResult {
   const reasons: string[] = [];
   let score = 0;
 
-  // ── 1. 거래 규모 ──
-  const [catPts, catWhy] = CATEGORY_SCORE[lead?.Category] || [10, ''];
+  // ── 1. 납품 규모 ──
+  const [catPts, catWhy] = CATEGORY_SCORE[lead?.category] || [10, ''];
   score += catPts;
   if (catWhy) reasons.push(catWhy);
 
@@ -67,19 +63,21 @@ export function recoScore(lead: any): RecoResult {
     if (rx.test(prefix)) { score += pts; reasons.push(why); break; }
   }
 
-  // ── 3. K-뷰티 실적 ──
-  const haystack = `${lead?.BrandsChannels || ''} ${lead?.Evidence || ''}`;
-  if (KR_BRAND.test(haystack)) {
+  // ── 3. 규모 신호 ── (lib/lead-tier.ts 와 같은 목록을 쓴다 — 두 벌로 갈리면 어긋난다)
+  const haystack = `${lead?.Company || ''} ${lead?.WebsiteContact || ''}`.toLowerCase();
+  if (SCALE_SIGNALS.some((kw) => haystack.includes(kw.toLowerCase()))) {
     score += 15;
-    reasons.push('한국 브랜드를 이미 취급 — 카테고리 설명이 필요 없음');
+    reasons.push('상호·도메인에 기관·체인 신호 — 한 번에 여러 개가 들어갈 곳');
   } else {
-    reasons.push('한국 브랜드 미취급 — 신규 개척 대상');
+    reasons.push('규모 신호 없음 — 규모는 회신 뒤 확인');
   }
 
-  const bc = brandCount(lead?.BrandsChannels);
-  if (bc >= 11)     { score += 10; reasons.push(`취급 브랜드 ${bc}개 — 편집 역량 있음`); }
-  else if (bc >= 6) { score += 7;  reasons.push(`취급 브랜드 ${bc}개`); }
-  else if (bc >= 3) { score += 4;  reasons.push(`취급 브랜드 ${bc}개`); }
+  // 홈페이지가 있으면 우리 쪽에서 미리 확인할 것이 있다는 뜻이고,
+  // 상대도 제안 내용을 확인할 창구가 있다는 뜻이다.
+  if (String(lead?.WebsiteContact || '').trim()) {
+    score += 6;
+    reasons.push('홈페이지 있음');
+  }
 
   // ── 4. 확인 가능성 — 근거가 얇으면 헛물켤 확률이 올라간다 ──
   const evLen = String(lead?.Evidence || '').length;
