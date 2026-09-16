@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "noEmit": false
+  },
+  "ts-node": {
+    "transpileOnly": false,
+    "require": ["tsconfig-paths/register"]
+  },
+  "include": ["scripts/**/*.ts", "src/**/*.ts"]
+}

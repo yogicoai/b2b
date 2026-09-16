@@ -1,0 +1,1550 @@
+/* ═══════════════════════════════════════════════════════════════
+   Yogico CRM — Toss-inspired design system
+   Light / Dark mode via [data-theme] on <html>
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
+
+/* ── Design tokens (Light — default) ─────────────────────────── */
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Neutral scale */
+  --bg-page: #f5f6f7;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #fafbfc;
+  --bg-surface-hover: #f2f4f6;
+  --bg-sidebar: #ffffff;
+  --bg-sidebar-item-active: #f2f7ff;
+
+  --border-subtle: #eaebee;
+  --border-default: #e5e8eb;
+  --border-strong: #d1d6db;
+
+  --text-primary: #191f28;
+  --text-secondary: #4e5968;
+  --text-tertiary: #8b95a1;
+  --text-quaternary: #b0b8c1;
+  --text-inverse: #ffffff;
+
+  /* Brand — Toss blue */
+  --brand: #3182f6;
+  --brand-hover: #1b64da;
+  --brand-soft: #e8f2ff;
+  --brand-text: #3182f6;
+
+  /* Semantic */
+  --success: #22c55e;
+  --success-soft: #dcfce7;
+  --success-text: #166534;
+
+  --warning: #f59e0b;
+  --warning-soft: #fef3c7;
+  --warning-text: #92400e;
+
+  --danger: #ef4444;
+  --danger-soft: #fee2e2;
+  --danger-text: #991b1b;
+
+  --info: #6366f1;
+  --info-soft: #e0e7ff;
+  --info-text: #3730a3;
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 20px;
+  --r-pill: 999px;
+
+  /* Shadows (Toss uses very subtle shadows) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* Detail width */
+  --detail-width: 380px;
+
+  /* ── 별칭 토큰 ──────────────────────────────────────────────
+     app.js 는 --surface-1 / --border 같은 짧은 이름으로 색을 쓴다.
+     그런데 그 이름들은 #composeModalRoot 안에만 정의돼 있었다.
+     그 바깥(팝업, 카드, 표 머리)에서는 값이 없어 배경이 투명해졌고,
+     "업체 보기" 팝업이 뒤 화면과 겹쳐 보이는 문제로 나타났다.
+     (app.js 기준 --border 61곳 · --surface-1 28곳 · --surface-2 14곳)
+
+     값을 새로 만들지 않고 위 토큰을 가리키게만 한다.
+     그래야 다크모드가 따로 관리되지 않고 저절로 따라온다. */
+  --surface-0: var(--bg-surface);
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-hover);
+  --border: var(--border-default);
+  --muted: var(--text-tertiary);
+  --accent: var(--brand);
+  /* --brand-primary 는 일부러 두지 않는다. 쓰는 7곳이 모두
+     var(--brand-primary, #4338ca) 처럼 대체값을 갖고 있어 지금도 제 색이 나온다.
+     여기서 정의하면 그 7곳 색만 조용히 바뀐다. */
+}
+
+/* ── Dark mode ──────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --bg-page: #17171c;
+  --bg-surface: #1e1f24;
+  --bg-surface-alt: #23252b;
+  --bg-surface-hover: #292b31;
+  --bg-sidebar: #1a1b1f;
+  --bg-sidebar-item-active: #1e2a3d;
+
+  --border-subtle: #2a2c33;
+  --border-default: #33363d;
+  --border-strong: #43464e;
+
+  --text-primary: #f5f7fa;
+  --text-secondary: #cfd7e0;
+  --text-tertiary: #a7b0bb;
+  --text-quaternary: #7d8794;
+  --text-inverse: #191f28;
+
+  --brand: #4b8ff5;
+  --brand-hover: #6ba3f8;
+  --brand-soft: #1a2f4d;
+  --brand-text: #7fb0ff;
+
+  --success-soft: #14351f;
+  --success-text: #86efac;
+  --warning-soft: #3a2e0d;
+  --warning-text: #fcd34d;
+  --danger-soft: #3a1515;
+  --danger-text: #fca5a5;
+  --info-soft: #1e1e42;
+  --info-text: #a5b4fc;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Reset / Base ───────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+p { margin: 0; color: var(--text-secondary); }
+a { color: var(--brand-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; }
+input, select, textarea {
+  font-family: inherit;
+  color: var(--text-primary);
+}
+input::placeholder, textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+/* 리드 리스트 체크박스 크게 (터치/클릭 편의) */
+.lead-select,
+input[type="checkbox"].lead-select {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #2563eb;
+  margin: 4px;
+}
+/* 체크박스 들어있는 셀에 여백 확대 → 클릭 히트 영역 넓힘 */
+td:has(> .lead-select) {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+/* 컴포즈 모달: 항상 라이트 모드 톤으로 강제 (다크모드에서도 흰 배경 카드) */
+#composeModalRoot {
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary: #64748b;
+  --border: #e5e7eb;
+  --surface-0: #ffffff;
+  --surface-1: #f8fafc;
+  --surface-2: #f1f5f9;
+  color: #0f172a;
+}
+#composeModalRoot input,
+#composeModalRoot select,
+#composeModalRoot textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+#composeModalRoot input::placeholder,
+#composeModalRoot textarea::placeholder {
+  color: #94a3b8 !important;
+}
+#composeModalRoot label,
+#composeModalRoot h1, #composeModalRoot h2, #composeModalRoot h3, #composeModalRoot h4 {
+  color: #0f172a;
+}
+
+/* 편집기/컴포즈 폼 통일 스타일 · 다크모드 무관 항상 흰배경+진한글자 */
+.form-input,
+input.form-input,
+select.form-input,
+textarea.form-input,
+/* 메일 계정 모달 인풋 전체 */
+#macUser, #macPass, #macName,
+#macHost, #macPort, #macSecure,
+#macFromName, #macFromAddress,
+#macSenderTitle, #macSenderPhone, #macSenderCompany,
+#macSenderAddress, #macSenderWebsite,
+#macPreset {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.form-input:focus,
+#macUser:focus, #macPass:focus, #macName:focus,
+#macHost:focus, #macPort:focus, #macSecure:focus,
+#macFromName:focus, #macFromAddress:focus,
+#macSenderTitle:focus, #macSenderPhone:focus, #macSenderCompany:focus,
+#macSenderAddress:focus, #macSenderWebsite:focus,
+#macPreset:focus {
+  outline: none;
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.form-input option,
+#macSecure option, #macPreset option {
+  background: #ffffff;
+  color: #0f172a;
+}
+code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--bg-surface-alt);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+}
+
+/* ── App shell ──────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 240px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--sp-5) var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  flex-shrink: 0;
+  position: relative;
+  transition: width 0.2s ease;
+}
+
+/* ── 사이드바 접기 토글 버튼 (사이드바 상단 오른쪽 원형) ──────── */
+.sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 0;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.sidebar-toggle:hover {
+  background: var(--brand-primary, #4338ca);
+  color: white;
+  transform: scale(1.1);
+}
+.sidebar-toggle-icon {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+:root[data-sidebar-collapsed="true"] .sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* ── 접힘 상태: 사이드바 축소 + 라벨/서브텍스트 숨김 ─────────── */
+:root[data-sidebar-collapsed="true"] .sidebar {
+  width: 68px;
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+}
+:root[data-sidebar-collapsed="true"] .brand {
+  padding: var(--sp-2);
+  justify-content: center;
+}
+:root[data-sidebar-collapsed="true"] .brand-text {
+  display: none;
+}
+:root[data-sidebar-collapsed="true"] .nav-label {
+  display: none;
+}
+:root[data-sidebar-collapsed="true"] .nav-item {
+  justify-content: center;
+  padding: 9px 0;
+}
+:root[data-sidebar-collapsed="true"] .nav-icon {
+  margin-right: 0;
+  font-size: 18px;
+}
+.nav-icon {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 14px;
+  min-width: 20px;
+  text-align: center;
+}
+.nav-label {
+  transition: opacity 0.15s;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 99px;
+  text-align: center;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+.nav-badge:empty {
+  display: none;
+}
+.nav-badge[data-count="0"] {
+  opacity: 0.4;
+}
+.nav-item.active .nav-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+:root:not([data-theme="dark"]) .nav-badge {
+  color: #475569;
+  background: #e2e8f0;
+}
+:root:not([data-theme="dark"]) .nav-item.active .nav-badge {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--brand-text);
+}
+:root[data-sidebar-collapsed="true"] .nav-badge {
+  display: none;
+}
+.nav-external {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.6;
+  color: var(--text-tertiary);
+}
+:root[data-sidebar-collapsed="true"] .nav-external {
+  display: none;
+}
+a.nav-item {
+  text-decoration: none;
+}
+
+/* 사이드바 섹션 헤더 */
+.nav-section-label {
+  padding: 12px 12px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-tertiary);
+  opacity: 0.85;
+}
+:root[data-sidebar-collapsed="true"] .nav-section-label {
+  display: none;
+}
+.nav-sub-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 8px 12px;
+  opacity: 0.5;
+}
+:root[data-sidebar-collapsed="true"] .nav-sub-divider {
+  margin: 6px 4px;
+}
+.nav-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: 10px 0;
+}
+
+/* ── 다크 테마: 로고 이미지 자동 화이트 반전 ─────────────────── */
+:root[data-theme="dark"] .brand-logo {
+  filter: brightness(0) invert(1);
+}
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-6) var(--sp-8);
+  overflow-x: hidden;
+}
+
+/* ── Brand ──────────────────────────────────────────────────── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+.brand:hover { background: var(--bg-surface-hover); }
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* 로고 자체 배경/모양이 있어 컨테이너 배경/모서리 제거 — 파란 원 방지 */
+}
+.brand-logo { width: 100%; height: 100%; object-fit: contain; }
+.brand h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.brand p {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin: 2px 0 0;
+}
+
+/* ── Nav ────────────────────────────────────────────────────── */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--sp-2);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 9px var(--sp-3);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  min-height: 36px;
+}
+.nav-item:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+.nav-item.active {
+  background: var(--bg-sidebar-item-active);
+  color: var(--brand-text);
+  font-weight: 600;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+.topbar h2 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.topbar p {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* ── Button ─────────────────────────────────────────────────── */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-inverse);
+  background: var(--brand);
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+  white-space: nowrap;
+}
+.button:hover { background: var(--brand-hover); }
+.button:active { transform: translateY(1px); }
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--text-quaternary);
+}
+.button.secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+.button.secondary:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+.button.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.button.ghost:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+.button.danger-action {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+}
+
+/* ── Toolbar (search + filters) ─────────────────────────────── */
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(140px, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  margin-bottom: var(--sp-4);
+}
+@media (max-width: 900px) {
+  .toolbar { grid-template-columns: 1fr; }
+}
+.toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.toolbar label span {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.search-box input, .toolbar select {
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.search-box input:focus, .toolbar select:focus {
+  border-color: var(--brand);
+  background: var(--bg-surface);
+}
+
+/* ── Stage banner (stage pages) ─────────────────────────────── */
+.stage-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  margin-bottom: var(--sp-4);
+}
+.stage-banner .stage-info { display: flex; align-items: center; gap: var(--sp-4); }
+.stage-banner .stage-icon {
+  font-size: 32px;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-lg);
+  background: var(--brand-soft);
+}
+.stage-banner .stage-count {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+.stage-banner .stage-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+.stage-banner .stage-hint {
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface-alt);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+/* ── Stats grid ─────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.stat, .stat-button {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-button {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+  text-align: left;
+  font-family: inherit;
+}
+.stat-button:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface-hover);
+}
+.stat-button:active { transform: translateY(1px); }
+.stat strong, .stat-button strong {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.stat span, .stat-button span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* ── Table ──────────────────────────────────────────────────── */
+.table-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+thead th {
+  background: var(--bg-surface-alt);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+tbody td {
+  padding: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+  background: var(--bg-surface);
+}
+tbody tr:hover td {
+  background: var(--bg-surface-hover);
+  cursor: pointer;
+}
+tbody tr.selected td {
+  background: var(--bg-sidebar-item-active);
+}
+tbody tr:last-child td { border-bottom: none; }
+.company-cell strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.company-cell .meta-line {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+/* ── Badge ──────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.badge.priority-a { background: var(--danger-soft); color: var(--danger-text); }
+.badge.priority-b { background: var(--warning-soft); color: var(--warning-text); }
+.badge.priority-c { background: var(--brand-soft); color: var(--brand-text); }
+
+/* ── Content ────────────────────────────────────────────────── */
+.content { margin-top: 0; }
+.empty-detail {
+  padding: 60px 40px;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+}
+.empty-detail h3 {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.empty-detail p {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* ── Bulk actions ───────────────────────────────────────────── */
+.bulk-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+/* ── Modal ──────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.modal-card {
+  background: var(--bg-surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-5) var(--sp-6);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.modal-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  color: var(--text-tertiary);
+  padding: 4px 8px;
+  border-radius: var(--r-md);
+  transition: background 0.15s;
+}
+.modal-close:hover { background: var(--bg-surface-hover); }
+.modal-form {
+  padding: var(--sp-5) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+.modal-grid.modal-grid-3col { grid-template-columns: repeat(3, 1fr); }
+.modal-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.modal-grid label span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.modal-grid input, .modal-grid select, .modal-grid textarea {
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  outline: none;
+}
+.modal-grid input:focus, .modal-grid select:focus, .modal-grid textarea:focus {
+  border-color: var(--brand);
+  background: var(--bg-surface);
+}
+.modal-grid label.modal-full { grid-column: 1 / -1; }
+.modal-grid textarea { min-height: 80px; resize: vertical; }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-alt);
+}
+.field-block {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.field-block h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-3);
+}
+.inline-save {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.inline-save input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+
+/* ── Sortable header ────────────────────────────────────────── */
+th.sortable { -webkit-user-select: none; user-select: none; }
+th.sortable:hover { color: var(--text-primary); }
+
+/* ── Stage select (inline) ──────────────────────────────────── */
+.stage-select {
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: var(--r-md) !important;
+  min-width: 130px !important;
+  border: 1px solid transparent !important;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.stage-select:hover { border-color: var(--border-strong) !important; }
+
+/* ── Theme toggle ───────────────────────────────────────────── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.theme-toggle:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* ── Followup list ──────────────────────────────────────────── */
+.followup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.followup-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+.followup-item:hover { background: var(--bg-surface-hover); }
+.followup-item .muted { color: var(--text-tertiary); font-size: 12px; }
+
+/* ── Region grid ───────────────────────────────────────────── */
+.continent-section { margin-bottom: var(--sp-6); }
+.continent-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--sp-3);
+}
+.continent-heading h3 { font-size: 15px; letter-spacing: -0.02em; }
+.continent-heading span { font-size: 12px; color: var(--text-tertiary); }
+.region-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+.region-card {
+  padding: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-primary);
+  transition: border-color 0.15s;
+}
+.region-card:hover { border-color: var(--border-strong); }
+.region-card strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.region-card span { font-size: 11px; color: var(--text-tertiary); }
+
+/* ── Pipeline pills ─────────────────────────────────────────── */
+.pipeline {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+.pipeline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.pipeline-pill:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.pipeline-pill.active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand-text);
+  font-weight: 600;
+}
+.pipeline-pill strong { font-weight: 700; }
+
+/* ── Loading indicators ─────────────────────────────────────── */
+#topProgressBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: linear-gradient(90deg, var(--brand), var(--info));
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: width 0.2s ease-out, opacity 0.2s ease-out;
+}
+#topProgressBar.is-active { opacity: 1; }
+
+.content-loading {
+  position: relative;
+  min-height: 240px;
+  pointer-events: none;
+  opacity: 0.45;
+  transition: opacity 0.15s ease-out;
+}
+.content-loading::after {
+  content: "";
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 38px;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: cd-spin 0.7s linear infinite;
+}
+.inline-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.inline-loader::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: cd-spin 0.7s linear infinite;
+}
+
+#globalBlocker {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+#globalBlocker.is-active { display: flex; }
+#globalBlocker .blocker-card {
+  background: var(--bg-surface);
+  padding: var(--sp-6) var(--sp-8);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 220px;
+}
+/* 로고를 감싸고 도는 고리 — 기다리는 동안 볼 것이 있어야 한다.
+   로고 자체는 돌리지 않는다(글자가 거꾸로 서면 읽기 나쁘다). 고리만 돈다. */
+#globalBlocker .blocker-spinner {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#globalBlocker .blocker-spinner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--brand);
+  border-right-color: var(--brand);
+  animation: cd-spin 0.9s cubic-bezier(.5, .1, .5, .9) infinite;
+}
+/* 안쪽 로고 — 살짝 커졌다 작아지며 숨 쉬듯 */
+#globalBlocker .blocker-spinner::after {
+  content: '';
+  width: 34px;
+  height: 34px;
+  background: url('/assets/logo.png') center/contain no-repeat;
+  animation: cd-breathe 1.8s ease-in-out infinite;
+}
+@keyframes cd-breathe {
+  0%, 100% { transform: scale(1);    opacity: .85; }
+  50%      { transform: scale(1.08); opacity: 1; }
+}
+#globalBlocker .blocker-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+/* 점 세 개가 순서대로 차오른다 — 멈춘 게 아니라는 신호 */
+#globalBlocker .blocker-text::after {
+  content: '';
+  animation: cd-dots 1.4s steps(4, end) infinite;
+}
+@keyframes cd-dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%  { content: '...'; }
+}
+
+@keyframes cd-spin { to { transform: rotate(360deg); } }
+
+/* 검증 히어로 아이콘 pulse 애니메이션 */
+@keyframes pulseIcon {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(99,102,241,0)); }
+  50%      { transform: scale(1.08); filter: drop-shadow(0 0 12px rgba(99,102,241,0.5)); }
+}
+.pulse-icon {
+  display: inline-block;
+  animation: pulseIcon 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-icon { animation: none; }
+}
+
+/* 검증 히어로 카드 hover 효과 */
+.verify-hero-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.verify-hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+.verify-hero-card button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.verify-hero-card button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* 반응형 — 좁은 화면에서 히어로 카드 세로로 */
+@media (max-width: 900px) {
+  .verify-hero {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Utility ────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ══ 좁은 화면 ═══════════════════════════════════════════════
+
+   예전에는 620px 아래에서 .app-shell 을 세로로 쌓았다. 그러면 사이드바가
+   가로 100% 가 되면서 메뉴 15개가 첫 화면을 통째로 차지했다 — 390px 에서
+   재 보면 본문이 한 줄도 안 보이고, 업체 목록을 보려면 메뉴를 전부 지나
+   스크롤해야 했다. "반응형이 안 된다" 의 정체가 이것이었다.
+
+   그래서 쌓지 않고 **서랍**으로 바꾼다. 사이드바를 화면 왼쪽 밖에 세워 두고
+   상단 ☰ 를 누를 때만 본문 위로 덮어서 연다. 본문은 언제나 첫 화면에 있다.
+   ═══════════════════════════════════════════════════════════ */
+
+/* 넓은 화면 기본값 — 서랍 장치는 보이지 않는다 */
+.nav-drawer-btn { display: none; }
+.nav-backdrop { display: none; }
+.topbar-head { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.topbar-title { min-width: 0; }
+
+@media (max-width: 900px) {
+  .main { padding: var(--sp-4); }
+  .topbar h2 { font-size: 20px; }
+
+  /* ☰ 버튼 */
+  .nav-drawer-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    font-size: 19px;
+    line-height: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .nav-drawer-btn:hover { background: var(--bg-surface-hover); }
+
+  /* 사이드바 = 화면 밖에 세워 둔 서랍 */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    max-width: 84vw;
+    z-index: 70;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid var(--border-subtle);
+  }
+  body[data-nav-open="true"] .sidebar {
+    transform: none;
+    box-shadow: 0 0 40px rgba(15, 23, 42, 0.28);
+  }
+
+  /* 뒤를 덮는 막 */
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(15, 23, 42, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  body[data-nav-open="true"] .nav-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* 서랍에서는 접기 토글이 의미가 없다 (이미 숨어 있다) */
+  .sidebar-toggle { display: none; }
+
+  /* 넓은 화면에서 접어 둔 상태로 저장돼 있어도,
+     서랍은 글자까지 펴서 보여준다 — 아이콘만 뜨면 무슨 메뉴인지 모른다. */
+  :root[data-sidebar-collapsed="true"] .sidebar {
+    width: 272px;
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+  :root[data-sidebar-collapsed="true"] .brand { padding: var(--sp-3); justify-content: flex-start; }
+  :root[data-sidebar-collapsed="true"] .brand-text,
+  :root[data-sidebar-collapsed="true"] .nav-label,
+  :root[data-sidebar-collapsed="true"] .nav-badge,
+  :root[data-sidebar-collapsed="true"] .nav-section-label,
+  :root[data-sidebar-collapsed="true"] .nav-sub-divider,
+  :root[data-sidebar-collapsed="true"] .nav-external { display: revert; }
+  :root[data-sidebar-collapsed="true"] .nav-item { justify-content: flex-start; padding: 9px 10px; }
+  :root[data-sidebar-collapsed="true"] .nav-icon { margin-right: 8px; font-size: 14px; }
+  :root[data-sidebar-collapsed="true"] .nav-badge { margin-left: auto; }
+}
+
+@media (max-width: 620px) {
+  .main { padding: var(--sp-3); }
+  .topbar { flex-wrap: wrap; row-gap: var(--sp-3); margin-bottom: var(--sp-4); }
+  .top-actions { flex-wrap: wrap; }
+  .modal-grid, .modal-grid.modal-grid-3col { grid-template-columns: 1fr; }
+  .modal-card { margin: 8px; max-height: 94vh; width: auto; max-width: none; }
+}
+
+/* ── 회신 상자 (contenteditable) ─────────────────────────────
+   textarea 와 달리 contenteditable 에는 placeholder 속성이 없어
+   비어 있을 때 안내 문구를 직접 그려준다. */
+#convReplyBody:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+#convReplyBody:focus { border-color: #2563eb; }
+#convReplyBody a { color: #1d4ed8; }
+
+/* 좁은 화면에서는 좌우 2단이 각각 너무 좁아진다 → 위아래로 쌓는다 */
+@media (max-width: 900px) {
+  .reply-2col { grid-template-columns: 1fr !important; }
+  .reply-2col > div:last-child { min-height: 120px !important; }
+}
+
+/* 서명 붙이기 도움말 — 평소엔 숨기고 마우스를 올리면 뜬다 */
+.sig-pop { display: none; }
+.sig-help:hover .sig-pop, .sig-help:focus-within .sig-pop { display: block; }
+.sig-pop::after {           /* 말풍선 꼬리 */
+  content: ''; position: absolute; top: 100%; left: 12px;
+  border: 6px solid transparent; border-top-color: #0f172a;
+}
+
+/* ── 팝업이 떠 있는 동안 뒤 화면 고정 ────────────────────────
+   모달 안에서 스크롤하다 끝에 닿으면 뒤 목록이 따라 움직여서
+   (스크롤 체이닝) 닫고 나면 엉뚱한 위치에 가 있었다.
+   overflow:hidden 만 주면 스크롤바가 사라지며 화면이 옆으로 튀므로
+   사라진 스크롤바 폭만큼 padding 으로 메운다 (JS 에서 채워 넣는다). */
+body.modal-open {
+  overflow: hidden;
+  padding-right: var(--scrollbar-w, 0px);
+}
+
+/* ── 메일 상세 — 받은 편지 | 답장 좌우 배치 ────────────────────
+   예전에는 위아래였다. 답장을 쓰려면 편지에서 스크롤을 내려야 해서,
+   MOQ·단가·담당자 이름처럼 편지에서 그대로 옮겨 적을 것을 확인하려면
+   올렸다 내렸다를 반복해야 했다.
+
+   그냥 반씩 자르지는 않는다. 답장 칸은 그 안이 이미 2단
+   (영문 초안 | 한글 대역본)이라, 반으로 자르면 영문 쓰는 칸이
+   1/4 폭이 되어 오히려 더 쓰기 어려워진다.
+   그래서 좌우로 나누는 동안에는 답장 안쪽 2단을 위아래로 편다 —
+   한글 대역본은 확인용이라 나란히 있을 필요가 없다. */
+/* 좁은 화면 기본값 = 예전 그대로 위아래 */
+.mail-split { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.mail-split > .mail-read, .mail-split > .mail-reply { min-width: 0; }
+
+/* 폭이 나올 때만 좌우로 나눈다 */
+@media (min-width: 1101px) {
+  .mail-split {
+    flex-direction: row;
+    min-height: 0;        /* 없으면 flex 자식이 안 줄어들어 안쪽 스크롤이 안 생긴다 */
+    overflow: hidden;
+  }
+  .mail-split > .mail-read,
+  .mail-split > .mail-reply {
+    flex: 1 1 50%;
+    overflow-y: auto;     /* 편지와 답장이 각자 스크롤한다 */
+  }
+  .mail-split > .mail-reply {
+    border-left: 1px solid var(--border-default);
+    background: #fff;
+  }
+  /* 위아래였을 때 쓰던 구분선 — 좌우에서는 왼쪽 테두리가 그 일을 한다 */
+  .mail-split > .mail-reply > div { border-top: none !important; }
+
+  /* 답장 안쪽 2단을 위아래로 편다.
+     아래 값들은 마크업에 style="" 로 박혀 있어 !important 가 없으면 안 먹는다. */
+  .mail-split .reply-2col { grid-template-columns: 1fr !important; }
+  .mail-split #convReplyBody { max-height: none !important; min-height: 200px !important; }
+  .mail-split #convDraftKo { max-height: none !important; min-height: 92px !important; }
+}
+
+/* 메일 전체 보기 — 팝업을 화면 전체로 */
+#mailDetailRoot.mail-full { padding: 0 !important; }
+#mailDetailRoot.mail-full > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+/* ── 리드 표 — 행이 세로로 늘어나지 않게 ──────────────────────
+   좁은 칸에서 "승/인/됨" 이나 "United / Kingdom" 처럼 글자가 세로로
+   쪼개지면 행 높이가 제각각이 되어 표가 흐트러진다. */
+.table-wrap table td { vertical-align: middle; }
+.company-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.company-cell .meta-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+/* 긴 값이 표를 옆으로 밀어내지 않게 — 잘라 보여주고 전체는 title 툴팁으로.
+   (전화번호에 "+48 222 662 877 (B2B/wholesale) / +48 22 602 28 32 (retail…)"
+    같은 값이 들어와 가로 스크롤이 생기던 문제) */
+.cell-ellipsis {
+  max-width: 0;          /* table-layout 이 auto 라 0 을 주면 지정 width 를 따른다 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-ellipsis > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  max-width: 100%;
+}
+
+/* ── 상세 팝업 검토 바 ──────────────────────────────────────
+   팝업을 닫지 않고 판정하고 다음 회사로 넘어가기 위한 컨트롤.
+   418곳을 하나씩 열고 닫으면 검토를 중간에 포기하게 된다. */
+.el-nav-btn {
+  height: 30px; padding: 0 11px; line-height: 1;
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  border: 1px solid var(--border-default); border-radius: 8px;
+  background: var(--bg-surface); color: var(--text-secondary);
+  cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+}
+.el-nav-btn:hover:not(:disabled) {
+  background: var(--brand-soft, #eef2ff);
+  border-color: var(--brand, #c7d2fe);
+  color: var(--brand-text, #4338ca);
+}
+.el-nav-btn:disabled { opacity: .35; cursor: default; }
+
+.el-judge {
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  padding: 8px 13px; border-radius: 9px; cursor: pointer;
+  transition: filter .12s, transform .06s;
+}
+.el-judge:hover { filter: brightness(.96); }
+.el-judge:active { transform: translateY(1px); }
+.el-judge-go { border: 1px solid #86efac; background: #f0fdf4; color: #15803d; }
+.el-judge-no { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
+.el-judge:disabled { opacity: .5; cursor: default; }
+
+/* hidden 속성은 인라인 display 보다 항상 이긴다.
+   파트너 상세의 '이전 대화 N통 더 보기' 상자가 style="display:flex" 때문에
+   hidden 인데도 처음부터 다 펼쳐져 있었다. 같은 실수가 다른 곳에도 생기지 않게 막는다. */
+[hidden] { display: none !important; }
+
+/* ══ 휴대폰·태블릿에서 화면이 잘리지 않게 ═══════════════════════
+   (2026-09-16, 대표님 요청 "반응형 점검")
+
+   화면 안쪽 내용은 대부분 app.js 가 인라인 style 로 그린다. 인라인이 CSS 를 이기므로
+   여기서는 **좁은 화면에서만** !important 로 되돌린다 — 넓은 화면은 손대지 않는다.
+
+   무엇이 문제였나 (390px 에서 실측 · scripts/check-responsive.mjs):
+     · 받은 메일함: 왼쪽 거래처 폴더가 210px 로 고정이라 목록 칸이 140px 만 남았다
+     · 검색칸 min-width:220px 가 화면 밖으로 66px 나갔다
+     · 목록 위 도구줄의 [정렬·건수] 가 오른쪽으로 348px 밀려나 안 보였다
+     · 발송 관리: 쓰는 칸 | 미리보기 2단이 각각 280px 를 요구해 216px 넘쳤다
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* 받은 메일함 — 폴더를 목록 위로 쌓는다. 가로로 나란히 두기엔 폭이 없다. */
+  .inbox-layout { flex-direction: column !important; gap: 10px !important; }
+  .inbox-folders {
+    width: 100% !important;
+    max-height: 210px !important;   /* 폴더가 많아 화면을 다 먹지 않게 — 안에서 스크롤 */
+    align-self: stretch !important;
+  }
+  .inbox-main { width: 100%; }
+
+  /* 발송 관리 — 쓰는 칸과 미리보기를 위아래로 */
+  .outbox-compose { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 620px) {
+  /* 검색칸은 한 줄을 다 쓴다 */
+  #inboxSearch, #sentQ, #relSearch { min-width: 0 !important; flex: 1 1 100% !important; width: 100%; }
+
+  /* 목록 위 도구줄 — 오른쪽으로 밀지 말고 아랫줄로 내려온다.
+     줄바꿈은 **바깥 줄(.bulk-actions)** 에도 있어야 한다. 안쪽만 고쳐두면
+     바깥이 한 줄을 고집해 [정렬·건수] 가 통째로 화면 밖으로 밀려난다. */
+  .bulk-actions { flex-wrap: wrap; }
+  .list-toolbar-meta {
+    margin-left: 0 !important;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* 버튼 글자가 길면 두 줄로 — 안 그러면 줄바꿈을 안 해 화면 밖으로 나간다.
+     word-break: keep-all 이 꼭 같이 있어야 한다. 한글은 기본값이 아무 글자에서나 줄을 바꿔서,
+     칸이 좁아지면 [검증실패 업체로 선정] 이 한 글자씩 세로로 쪼개진다 (대표님 지적 2026-09-16).
+     keep-all 이면 띄어쓰기에서만 바뀌고, 칸도 낱말보다 좁아지지 않는다. */
+  .button, .el-judge, .el-nav-btn { white-space: normal; word-break: keep-all; }
+
+  /* 표는 칸 안에서 옆으로 밀어 본다. 여백을 줄여 한 화면에 더 들어오게 한다. */
+  .table-wrap table { font-size: 12px; }
+  .table-wrap tbody td { padding: 10px 9px; }
+  .table-wrap thead th { padding: 9px; }
+
+  /* 손가락으로 누르는 것들은 너무 작지 않게 */
+  .button, .nav-item, .inbox-group { min-height: 34px; }
+
+  /* 팝업은 화면을 꽉 채운다 — 좁은 화면에서 가장자리 여백은 낭비다 */
+  .modal-card { margin: 6px !important; max-height: 96vh !important; }
+}
+
+/* [오늘 온 메일] 카드 — 좁은 화면에서는 가로로 늘어놓지 않고 위에서 아래로 읽히게.
+   가로 배치 그대로 두면 큰 숫자가 화면 가운데에 떠 있고 버튼이 오른쪽 구석으로 밀려
+   "이게 무슨 숫자지" 가 된다 (390px 에서 실측). */
+@media (max-width: 620px) {
+  .today-row { gap: 14px !important; }
+  .today-head { width: 100%; }
+  .today-stats {
+    width: 100%;
+    gap: 16px !important;
+    justify-content: flex-start !important;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  /* 큰 숫자와 칸막이는 줄 맨 앞에 붙인다 */
+  .today-stats > div:nth-child(2) { display: none; }   /* 세로 칸막이 — 줄이 바뀌면 의미가 없다 */
+  .today-cta { margin-left: 0 !important; width: 100%; text-align: left !important; }
+  .today-cta button { width: 100%; }
+}
+
+/* 팝업 머리말 — 좁은 화면에서는 제목과 판정 버튼을 위아래로.
+   가로로 두면 제목이 폭을 다 먹고 버튼 칸이 30px 만 남아, 버튼 글자가 세로로 쪼개진다
+   (대표님 지적 2026-09-16 · [↩ 발송 취소]·[🚫 검증실패 업체로 선정]). */
+@media (max-width: 620px) {
+  .modal-header { flex-direction: column; align-items: stretch; gap: 10px; position: relative; }
+  .modal-header #el-review { width: 100%; justify-content: flex-start; }
+  #el-judgeBox { width: 100%; flex-wrap: wrap; }
+  /* 버튼은 낱말보다 좁아지지 않게 — 두 개가 한 줄에 못 들어가면 각자 한 줄을 쓴다 */
+  .el-judge { flex: 1 1 150px; min-width: 150px; text-align: center; }
+  #el-navBox { width: 100%; justify-content: space-between; }
+  /* 닫기는 오른쪽 위 구석에 고정 — 버튼 줄에 끼면 눌러야 할 것이 셋이 되어 헷갈린다 */
+  .modal-header .modal-close { position: absolute; top: 10px; right: 12px; }
+}

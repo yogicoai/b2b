@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.env*
+.env.local
+
+# ── 실제 업체 데이터 — 저장소에 올리지 않는다 ────────────────────
+# 메일 본문·담당자 연락처가 그대로 들어 있다.
+scripts/mail-analysis/
+scripts/.threadkey-backup.json
+scripts/backups/
+scripts/.*.tmp.mjs
+*-crm-export-*.csv
+leads_export*.csv
+
+# 되돌리기용 정리 기록 (거래처 id 목록)
+scripts/.cleanup-*.json
+scripts/.mark-replied-*.json

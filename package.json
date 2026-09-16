@@ -1,0 +1,51 @@
+{
+  "name": "yogibo-b2b",
+  "version": "1.0.0",
+  "description": "요기보 국내 B2B CRM — 키워드 발굴 → AI 검증 → 승인 → 메일 발송 → 답장 관리",
+  "main": "app.js",
+  "scripts": {
+    "dev": "next dev -p 5610",
+    "build": "next build",
+    "start": "next start -p 5610",
+    "lint": "next lint",
+    "seed": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-leads.ts",
+    "seed:admin": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-admin.ts",
+    "mail:test": "node scripts/ingest-mail.mjs --test",
+    "mail:ingest": "node scripts/ingest-mail.mjs",
+    "mail:indexes": "node -r dotenv/config scripts/ensure-mail-indexes.mjs dotenv_config_path=.env.local",
+    "test:mail-lib": "ts-node -P tsconfig.scripts.json scripts/test-mail-lib.ts",
+    "test:match-lead": "ts-node -P tsconfig.scripts.json -r dotenv/config scripts/test-match-lead.ts dotenv_config_path=.env.local",
+    "crawl:all": "node scripts/crawl-naver.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
+    "@types/nodemailer": "^8.0.1",
+    "imapflow": "^1.7.8",
+    "jose": "^6.2.3",
+    "mailparser": "^3.9.23",
+    "mongoose": "^9.6.1",
+    "next": "^16.2.5",
+    "nodemailer": "^9.0.5",
+    "playwright": "^1.62.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "cheerio": "^1.0.0",
+    "p-limit": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "dotenv": "^17.4.2",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.2.4",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^6.0.3"
+  }
+}

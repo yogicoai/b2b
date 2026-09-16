@@ -1,0 +1,85 @@
+# 예약 발송을 제때 내보내기 위한 깨우미(pinger).
+#
+# 왜 필요한가:
+# Vercel Hobby 플랜은 크론을 **하루 1회**까지만 돌린다(vercel.json 참고).
+# 그래서 "5분 뒤 발송"으로 예약을 걸어도 다음 자정까지 아무 일도 일어나지 않는다.
+# 예약 기능 자체는 멀쩡한데 나가는 시점만 하루 단위로 묶여 버리는 셈이다.
+#
+# 여기서 주기적으로 /api/cron/process-schedules 를 두드려 주면,
+# 예약 시각이 지난 건이 그때그때 나간다. 발송 간격·하루 상한 같은 안전장치는
+# 그 안에서 그대로 돌아가므로 여기서는 "깨우기"만 한다.
+#
+# ── 주의: GitHub Actions 의 예약은 정확하지 않다 ──
+# 최소 간격이 5분이고, 혼잡할 때는 5~15분씩 늦게 도는 일이 흔하다.
+# 분 단위로 정확해야 하는 일에는 맞지 않는다. 콜드메일은 몇 분 늦어도
+# 문제가 없어서 이 정도로 충분하다.
+#
+# ── 비용 ──
+# 공개 저장소는 무료. 비공개 저장소는 Actions 분(minute)을 쓴다.
+# 10분 간격이면 한 달 약 4,300회이고 회당 1분으로 계산되므로,
+# 무료 한도(2,000분)를 넘는다. 비공개 저장소라면 아래 둘 중 하나를 택할 것:
+#   · cron 을 '*/30 * * * *' 로 늦추기 (월 1,440회 — 한도 안에 들어온다)
+#   · 또는 이 워크플로 대신 cron-job.org 같은 무료 외부 크론 쓰기 (권장)
+#
+# ── 설정 (GitHub 저장소 → Settings → Secrets and variables → Actions) ──
+#   CRON_URL      https://<배포주소>/api/cron/process-schedules
+#   CRON_SECRET   Vercel 환경변수에 넣은 값과 똑같이
+#
+# 두 값이 없으면 이 워크플로는 아무것도 하지 않고 조용히 끝난다
+# (실패로 떠서 알림이 쌓이는 것보다 낫다).
+
+name: 예약 발송 깨우기
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # 10분마다 (UTC 기준 · 이 작업은 시간대와 무관)
+  workflow_dispatch:          # 필요할 때 손으로도 돌릴 수 있게
+
+# 앞 실행이 아직 돌고 있으면 새로 시작하지 않는다.
+# 겹쳐 돌면 같은 예약을 두 번 집어 갈 수 있다.
+concurrency:
+  group: process-schedules
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: 예약 처리 호출
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ]; then
+            echo "CRON_URL 이 설정되지 않아 건너뜁니다."
+            echo "저장소 Settings → Secrets and variables → Actions 에서 넣어주세요."
+            exit 0
+          fi
+
+          # 서버가 최대 300초까지 돌 수 있으므로 넉넉히 기다린다.
+          # --fail 을 쓰지 않는 이유: 본문에 들어 있는 실패 사유를 보고 싶어서다.
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+                   --max-time 320 \
+                   -H "Authorization: Bearer $CRON_SECRET" \
+                   "$CRON_URL")
+
+          echo "HTTP $code"
+          cat /tmp/out.json || true
+          echo
+
+          if [ "$code" != "200" ]; then
+            echo "::error::예약 처리 호출 실패 (HTTP $code)"
+            exit 1
+          fi
+
+          # 보낸 통수를 실행 요약에 남겨 둔다 — 나중에 "그때 몇 통 나갔지" 를 볼 수 있게
+          node -e '
+            const fs = require("fs");
+            let d = {};
+            try { d = JSON.parse(fs.readFileSync("/tmp/out.json", "utf8")); } catch {}
+            const r = d.results || [];
+            const ok = r.filter(x => x && x.ok).length;
+            const ng = r.length - ok;
+            console.log(`시각이 된 건 ${d.due ?? 0} · 처리 ${d.processed ?? 0} · 보냄 ${ok} · 실패 ${ng} · 오늘 누적 ${d.sentToday ?? 0}/${d.dailyCap ?? "-"}`);
+          '

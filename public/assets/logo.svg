@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Yogico logo">
+  <!-- Outer ring -->
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#111" stroke-width="18"/>
+
+  <!-- Stylized 'y' built from two thick vertical strokes + a curving tail -->
+  <!-- Left bar of the cup -->
+  <rect x="55" y="52" width="22" height="74" fill="#111"/>
+  <!-- Right bar continues into the tail -->
+  <path d="M 123 52
+           L 145 52
+           L 145 132
+           Q 145 158 122 164
+           Q 102 168 84 158
+           L 94 142
+           Q 108 150 120 144
+           Q 127 140 127 128
+           L 127 126
+           L 77 126
+           Q 55 126 55 104
+           L 77 104
+           Q 77 108 81 108
+           L 123 108
+           Z"
+        fill="#111"/>
+</svg>
