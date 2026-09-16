@@ -147,18 +147,24 @@ async function main() {
   for (const [i, l] of leads.entries()) {
     const label = String(l.Company || '').slice(0, 22).padEnd(24);
 
+    // 괄호 안은 대개 운영사·지점 설명이라 검색을 방해한다.
+    // "켄싱턴호텔 여의도(이랜드파크)" 는 그대로 넣으면 안 잡히고, 괄호를 떼면 잡힌다.
+    const bare = String(l.Company || '').replace(/\([^)]*\)/g, '').trim();
+
     let items = [];
     try {
       // 지역을 붙이면 동명 업체 중 맞는 곳이 잡힐 확률이 올라간다
       items = await naverLocal(l.Region ? `${l.Region} ${l.Company}` : l.Company);
       if (!items.length && l.Region) items = await naverLocal(l.Company);
+      if (!items.length && bare && bare !== l.Company) items = await naverLocal(bare);
     } catch (e) {
       tally.errors++;
       console.log(`${String(i + 1).padStart(3)}. ${label} ⚠️  ${e.message}`);
       continue;
     }
 
-    const hit = pickMatch(items, l.Company, l.WebsiteContact);
+    const hit = pickMatch(items, l.Company, l.WebsiteContact)
+      || (bare !== l.Company ? pickMatch(items, bare, l.WebsiteContact) : null);
     if (!hit) {
       tally.noMatch++;
       console.log(`${String(i + 1).padStart(3)}. ${label} —  못 찾음`);
