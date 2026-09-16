@@ -1637,7 +1637,7 @@ async function _renderInner(seq) {
       renderStageBanner(displayInfo, totalForBanner, totalForBanner);
       // 국내판 카테고리 탭 (public/kr-screens.js) — 목록 위에 붙는다.
       // 어느 단계를 보든 "지금 학교 건인가 병원 건인가"를 먼저 갈라야 한다.
-      renderCategoryTabs(serverStage);
+      if (typeof renderCategoryTabs === 'function') renderCategoryTabs(serverStage);
       // 검증완료 페이지 상단에 성공/실패 탭
       if (s.stage === 'verified' && counts) {
         renderVerifiedResultTabs(counts.stages.verified, counts.stages.failed);
@@ -1784,8 +1784,14 @@ async function _renderInner(seq) {
     return;
   }
   // ── 국내판 전용 화면 (public/kr-screens.js) ──
-  // 단계 목록이 아닌 화면으로 옮기면 카테고리 탭을 걷어낸다
-  if (typeof state.view === 'string' && !state.view.startsWith('pipeline-')) {
+  // 단계 목록이 아닌 화면으로 옮기면 카테고리 탭을 걷어낸다.
+  //
+  // typeof 로 감싸는 이유: 이 함수는 kr-screens.js 에 있는데 두 파일 모두
+  // afterInteractive 로 붙어서 **완료 순서가 보장되지 않는다.** app.js 가 먼저
+  // 끝나 render() 가 돌면 "clearCategoryTabs is not defined" 로 화면 전체가 죽는다.
+  // 탭 하나 때문에 앱이 안 뜨는 것보다 그 순간만 건너뛰는 편이 낫다.
+  if (typeof state.view === 'string' && !state.view.startsWith('pipeline-')
+      && typeof clearCategoryTabs === 'function') {
     clearCategoryTabs();
   }
   if (state.view === "tool-user-admin") {
@@ -11925,9 +11931,12 @@ async function renderOutboxPage() {
   const readyAll = ready;
   const pendingAll = pending;
   const sentLeadsAll = sentLeads;
-  ready = krFilterByCategory(readyAll, leadLookup);
-  pending = krFilterByCategory(pendingAll, leadLookup);
-  sentLeads = krFilterByCategory(sentLeadsAll, leadLookup);
+  // kr-screens.js 가 아직 안 떴으면 거르지 않고 전부 보여준다 (위와 같은 이유)
+  if (typeof krFilterByCategory === 'function') {
+    ready = krFilterByCategory(readyAll, leadLookup);
+    pending = krFilterByCategory(pendingAll, leadLookup);
+    sentLeads = krFilterByCategory(sentLeadsAll, leadLookup);
+  }
 
   _outboxReadyIds = ready.map((l) => l.leadId);
   outboxSyncCompose(ready);
@@ -11976,7 +11985,7 @@ async function renderOutboxPage() {
         ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeadsAll.length, '#166534')}
       </div>
 
-      ${krOutboxCategoryBarHtml(
+      ${typeof krOutboxCategoryBarHtml !== 'function' ? '' : krOutboxCategoryBarHtml(
         _outboxTab === 'ready' ? readyAll : _outboxTab === 'scheduled' ? pendingAll : sentLeadsAll,
         leadLookup,
       )}
@@ -11989,7 +11998,7 @@ async function renderOutboxPage() {
   if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled);
   if (_outboxTab === 'sent')      body.innerHTML = outboxSentHtml(sentSched, sentLeads);
 
-  krBindOutboxCategoryBar(() => renderOutboxPage());
+  if (typeof krBindOutboxCategoryBar === 'function') krBindOutboxCategoryBar(() => renderOutboxPage());
 
   document.querySelectorAll('.outbox-tab').forEach((b) =>
     b.addEventListener('click', (e) => {

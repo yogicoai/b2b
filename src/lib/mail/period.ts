@@ -11,9 +11,15 @@
  *
  * 과거 메일이 사라지는 것은 아니다 — 검색·거래처별 보기로 언제든 조회된다.
  */
-export const COUNT_PERIOD_DAYS = 60;
+/**
+ * 2개월(60일)로 시작했다가 30일로 줄였다.
+ * 두 달 치를 들고 있으면 문서가 불어나 목록을 열 때마다 무겁고, 실제로
+ * 한 달 넘은 메일을 이 화면에서 다시 꺼내 보는 일이 없었다.
+ * 과거 메일이 지워지는 것은 아니다 — 이카운트 메일함에 그대로 있다.
+ */
+export const COUNT_PERIOD_DAYS = 30;
 
-export const COUNT_PERIOD_LABEL = '최근 2개월';
+export const COUNT_PERIOD_LABEL = '최근 1개월';
 
 /** 기준 시각 (이 시점 이후만 센다) */
 export function countSince(days = COUNT_PERIOD_DAYS): Date {
@@ -28,7 +34,7 @@ export function periodFilter(field = 'date', days = COUNT_PERIOD_DAYS) {
 /**
  * 회신 필요로 띄우는 기간.
  *
- * 왜 전체 기간(2개월)보다 짧은가:
+ * 왜 전체 기간(1개월)보다 짧은가:
  * 2주가 지나도록 답하지 않은 건은 사실상 답할 일이 아니거나 다른 경로로
  * 이미 정리된 것이다. 그런데 목록에 계속 남아 있으면 두 가지가 생긴다.
  *   · 숫자가 줄지 않아 "밀린 일이 산더미" 로 읽힌다

@@ -814,11 +814,13 @@ async function renderComposeMailPage() {
       '<span id="cmStatus" style="font-size:12.5px;color:var(--text-tertiary)"></span>' +
       '</div>'
     ) +
-    '<div id="cmResult"></div></div>';
+    '<div id="cmResult"></div>' +
+    '<div id="cmHistory"></div></div>';
 
   _composeTo = [];
   _composeHits = [];
   _composeHint = -1;
+  _historyOpen = new Set();
   krRenderComposeChips();
 
   const input = document.getElementById('cmTo');
@@ -920,6 +922,90 @@ function krPickContact(i) {
   _composeHits = [];
   krRenderComposeChips();
   document.getElementById('cmTo').focus();
+  // 방금 고른 사람과 전에 무슨 얘기를 했는지 아래에 띄운다.
+  // 메일을 쓰다가 제일 자주 궁금해지는 것이라 따로 찾아 들어가지 않게 한다.
+  krLoadHistory(c.email);
+}
+
+/* ── 이 사람과 오간 메일 ─────────────────────────────────────── */
+
+var _historyOpen = new Set();   // 펼쳐 본 메일
+
+async function krLoadHistory(email) {
+  const box = document.getElementById('cmHistory');
+  if (!box) return;
+
+  box.innerHTML = krCard('<div style="font-size:12.5px;color:var(--text-tertiary)">' +
+    escapeHtml(email) + ' 와 오간 메일을 찾는 중...</div>');
+
+  const res = await safeJsonFetch('/api/mail/history?email=' + encodeURIComponent(email));
+  if (!res || !res.success) { box.innerHTML = ''; return; }
+
+  const { contact, stats, mails } = res;
+  if (!mails.length) {
+    box.innerHTML = krCard(
+      '<div style="font-size:12.5px;color:var(--text-tertiary)">' +
+      escapeHtml(email) + ' 와 주고받은 메일이 없습니다. 처음 보내는 곳입니다.' +
+      (contact.company
+        ? ' <b style="color:var(--text-secondary)">' + escapeHtml(contact.company) + '</b> 로 등록돼 있습니다.'
+        : '') +
+      '</div>');
+    return;
+  }
+
+  const fmt = (d) => {
+    const t = new Date(d);
+    return isNaN(t) ? '' : (t.getMonth() + 1) + '/' + t.getDate();
+  };
+
+  const rows = mails.map((m) => {
+    const open = _historyOpen.has(m.id);
+    const out = m.direction === 'out';
+    return '<div style="border-top:1px solid var(--border-subtle, var(--border-default))">' +
+      '<div class="cm-hrow" data-id="' + escapeAttr(m.id) + '" ' +
+      'style="display:flex;gap:9px;align-items:baseline;padding:9px 2px;cursor:pointer">' +
+      '<span style="flex:none;font-size:11px;font-weight:800;padding:1px 7px;border-radius:5px;' +
+      'background:' + (out ? '#e7f3f9' : '#f1f5f7') + ';color:' + (out ? '#1f6b8c' : 'var(--text-secondary)') + '">' +
+      (out ? '보냄' : '받음') + '</span>' +
+      '<span style="flex:1;min-width:0;font-size:13px;color:var(--text-primary);' +
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(m.subject) + '</span>' +
+      (m.hasAttachment ? '<span style="flex:none;font-size:11px" title="첨부 있음">📎</span>' : '') +
+      (m.needsReply ? '<span style="flex:none;font-size:10.5px;font-weight:800;color:#b45309">회신 필요</span>' : '') +
+      '<span style="flex:none;font-size:11.5px;color:var(--text-tertiary)">' + fmt(m.date) + '</span>' +
+      '<span style="flex:none;font-size:10px;color:var(--text-quaternary)">' + (open ? '▲' : '▼') + '</span>' +
+      '</div>' +
+      (open
+        ? '<div style="padding:2px 2px 12px;font-size:12.5px;line-height:1.75;color:var(--text-secondary);' +
+          'white-space:pre-wrap">' +
+          (m.summary
+            ? '<div style="margin-bottom:6px;padding:8px 11px;background:var(--brand-softer,#f3f9fc);' +
+              'border-radius:8px;font-size:12px"><b>요약</b> ' + escapeHtml(m.summary) + '</div>'
+            : '') +
+          escapeHtml(m.preview || '(본문 미리보기 없음)') +
+          '<div style="margin-top:7px;font-size:11px;color:var(--text-quaternary)">' +
+          '전체 내용은 [📥 받은 메일함]에서 볼 수 있습니다.</div></div>'
+        : '') +
+      '</div>';
+  }).join('');
+
+  box.innerHTML = krCard(
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">' +
+    '<div style="font-size:14px;font-weight:800;color:var(--text-primary)">💬 이전에 오간 메일' +
+    (contact.company ? ' <span style="font-weight:600;color:var(--text-tertiary)">· ' +
+      escapeHtml(contact.company) + '</span>' : '') + '</div>' +
+    '<div style="font-size:11.5px;color:var(--text-tertiary)">' +
+    '받음 ' + stats.received + ' · 보냄 ' + stats.sent + '</div></div>' +
+    '<div style="font-size:11.5px;color:var(--text-tertiary);margin:2px 0 8px">' +
+    escapeHtml(contact.email) + ' · 제목을 누르면 내용이 펼쳐집니다</div>' +
+    rows);
+
+  box.querySelectorAll('.cm-hrow').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (_historyOpen.has(id)) _historyOpen.delete(id); else _historyOpen.add(id);
+      krLoadHistory(email);
+    });
+  });
 }
 
 function krComposeKeydown(e) {
