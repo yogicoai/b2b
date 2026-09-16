@@ -7,6 +7,7 @@ import { analyzeMail } from '@/lib/ai/analyze-mail';
 import { estimateMailCost, estimateBatchCost, actualCost } from '@/lib/ai/estimate';
 import { getMailScope, mailFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 import { loadMailBody } from '@/lib/mail/body';
+import { recheckRepliedStage } from '@/lib/mail/match-lead';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -150,6 +151,14 @@ export async function POST(req: Request) {
           const leadSet: any = { needsReply: Boolean(r.analysis.needsReply) };
           if (r.analysis.deadline) leadSet.replyDeadline = new Date(r.analysis.deadline).toISOString();
           await Lead.updateOne({ leadId: mail.leadId }, { $set: leadSet });
+
+          // '답장받음' 승급은 **수집 시점**에 판단한다. 그때는 분류가 아직 'unknown' 인
+          // 경우가 많아서, 광고·자동발송을 걸러내는 가드가 무력화된 채로 올라간다.
+          // 방금 AI 가 제대로 분류했으니 그 판단을 다시 물어본다.
+          // (조선호텔앤리조트가 통신요금 청구서 한 통으로 '답장받음' 에 올라가 있었다)
+          try {
+            await recheckRepliedStage(mail.leadId);
+          } catch { /* 재검증 실패가 분석 자체를 실패시키면 안 된다 */ }
         }
 
         const cost = actualCost(r.analysis.usage, r.analysis.model);

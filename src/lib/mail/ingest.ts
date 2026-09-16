@@ -20,7 +20,7 @@ import { parseMessage, type ParsedMail } from './parse';
 import { threadKey } from './thread';
 import { ruleClassify, shouldAnalyze, type RuleResult } from './classify';
 import { localAnalyze } from './local-analyze';
-import { matchLead, shouldMoveToReplied } from './match-lead';
+import { matchLead, shouldMoveToReplied, lastSentAtOf } from './match-lead';
 import { listMailAccounts, resolveAccount, toImapConfig } from './accounts';
 import { KEEP_DAYS } from './retention';
 import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, autoAssignGroup, getOwnDomains, GROUP_NOISE, type LearnedGroups } from './groups';
@@ -262,8 +262,14 @@ async function linkToLead(
     { $set: { leadId: hit.leadId, leadMatchedBy: hit.matchedBy } },
   );
 
+  // 승급 판단에는 "우리가 이 리드에 실제로 보낸 적이 있는가" 가 필요하다.
+  // 보낸 적 없는 곳에서 온 메일은 답장이 아니다 (match-lead.ts shouldMoveToReplied 주석 참고).
+  const leadDoc: any = await Lead.findOne({ leadId: hit.leadId }, { emailHistory: 1 }).lean();
   const move = opts.autoMove
-    && shouldMoveToReplied(hit.stage, doc.classification, doc.direction);
+    && shouldMoveToReplied(hit.stage, doc.classification, doc.direction, {
+      lastSentAt: lastSentAtOf(leadDoc?.emailHistory),
+      receivedAt: doc.date,
+    });
 
   const nowIso = new Date(doc.date || Date.now()).toISOString();
 
