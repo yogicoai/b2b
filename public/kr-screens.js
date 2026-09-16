@@ -750,3 +750,398 @@ function krCategoryBadge(category) {
     'font-size:11px;font-weight:700;border-radius:999px;white-space:nowrap;' +
     'background:' + st.bg + ';color:' + st.fg + '">' + escapeHtml(st.short) + '</span>';
 }
+
+/* ── 메일 쓰기 ────────────────────────────────────────────────────
+
+   아는 상대에게 한 통 쓰는 곳. [📨 발송 관리]와 다르다 —
+   그쪽은 양식을 골라 수백 곳에 나눠 보내는 영업 발송이고, 여기는 거래처 회신·
+   자료 전달·일정 조율처럼 사람이 직접 쓰는 메일이다. 이카운트 SMTP 로 그대로 나간다.
+
+   받는 사람은 **초성으로** 찾을 수 있다. "ㅅㅇㅇㅅ" 로 서울아산병원이 나온다 —
+   업체명이 길고 한자·영문이 섞여 있어 앞글자를 정확히 치기가 번거롭기 때문이다.
+   ───────────────────────────────────────────────────────────── */
+
+var _composeTo = [];          // 고른 받는 사람 [{name, email}]
+var _composeHint = -1;        // 자동완성에서 키보드로 짚고 있는 줄
+var _composeHits = [];        // 지금 떠 있는 후보
+var _composeTimer = null;
+
+async function renderComposeMailPage() {
+  els.content.innerHTML =
+    '<div style="max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:40px">' +
+    krCard(
+      krSectionTitle('✏️ 메일 쓰기',
+        '아는 상대에게 한 통 씁니다. 회사 메일 계정으로 그대로 나가고, ' +
+        '보낸메일함에도 사본이 남습니다. 여러 곳에 나눠 보내는 영업 메일은 ' +
+        '<b>[📨 발송 관리]</b>를 쓰세요.') +
+
+      // ── 받는 사람 ──
+      '<div style="margin-bottom:12px">' +
+      '<span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">' +
+      '받는 사람 <span style="font-weight:400;color:var(--text-tertiary)">· 초성으로 찾습니다 (예: ㅅㅇㅇㅅ) · 👤사내 📬주고받은 곳 🏢리드</span></span>' +
+      '<div id="cmChips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px"></div>' +
+      '<div style="position:relative">' +
+      '<input id="cmTo" type="text" autocomplete="off" placeholder="업체명·이름·메일 주소 일부를 입력하세요" ' +
+      'style="' + KR_INPUT_STYLE + '">' +
+      '<div id="cmHits" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:40;' +
+      'margin-top:4px;max-height:280px;overflow-y:auto;background:var(--bg-surface);' +
+      'border:1px solid var(--border-default);border-radius:10px;box-shadow:0 8px 24px rgba(16,40,56,.12)"></div>' +
+      '</div></div>' +
+
+      krField('제목', '',
+        '<input id="cmSubject" type="text" autocomplete="off" style="' + KR_INPUT_STYLE + '">') +
+
+      '<div style="margin-bottom:12px">' +
+      '<span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">내용</span>' +
+      '<div id="cmBody" contenteditable="true" ' +
+      'style="min-height:240px;padding:13px 14px;font-size:15px;line-height:1.7;' +
+      'border:1px solid var(--border-default);border-radius:8px;background:var(--bg-surface);' +
+      'color:var(--text-primary);outline:none;overflow-y:auto"></div>' +
+      '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">' +
+      '서명은 보내는 계정에 등록된 것이 자동으로 붙습니다.</div>' +
+      '</div>' +
+
+      '<label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:14px;cursor:pointer">' +
+      '<input id="cmAd" type="checkbox" style="margin-top:2px">' +
+      '<span><span style="font-size:12.5px;font-weight:700;color:var(--text-primary)">광고성 메일입니다</span>' +
+      '<span style="display:block;font-size:11px;color:var(--text-tertiary);line-height:1.55;margin-top:2px">' +
+      '켜면 제목에 (광고)가 붙고 본문 아래에 발신자 정보와 수신거부 링크가 들어갑니다. ' +
+      '야간(21~08시)에는 나가지 않습니다. 처음 연락하는 곳이면 켜야 합니다.</span></span></label>' +
+
+      '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">' +
+      '<button id="cmSend" class="button primary" style="padding:10px 22px;font-size:14px;font-weight:700">' +
+      '보내기</button>' +
+      '<span id="cmStatus" style="font-size:12.5px;color:var(--text-tertiary)"></span>' +
+      '</div>'
+    ) +
+    '<div id="cmResult"></div></div>';
+
+  _composeTo = [];
+  _composeHits = [];
+  _composeHint = -1;
+  krRenderComposeChips();
+
+  const input = document.getElementById('cmTo');
+  input.addEventListener('input', () => {
+    clearTimeout(_composeTimer);
+    // 한 글자 칠 때마다 부르면 서버가 같은 일을 열 번 한다
+    _composeTimer = setTimeout(krSearchContacts, 180);
+  });
+  input.addEventListener('keydown', krComposeKeydown);
+  input.addEventListener('blur', () => {
+    // 후보를 누르는 중에 닫히면 클릭이 먹지 않는다
+    setTimeout(() => { document.getElementById('cmHits').style.display = 'none'; }, 180);
+  });
+  input.addEventListener('focus', krSearchContacts);
+
+  document.getElementById('cmSend').addEventListener('click', krSendComposed);
+}
+
+/** 고른 사람들을 칩으로 */
+function krRenderComposeChips() {
+  const box = document.getElementById('cmChips');
+  if (!box) return;
+  box.innerHTML = _composeTo.map((c, i) =>
+    '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;' +
+    'background:var(--brand-soft,#e7f3f9);color:var(--brand-text,#1f6b8c);border-radius:999px;' +
+    'font-size:12.5px;font-weight:700">' +
+    escapeHtml(c.name) +
+    '<span style="font-weight:400;opacity:.75;font-size:11px">' + escapeHtml(c.email) + '</span>' +
+    '<button type="button" data-cm-del="' + i + '" style="border:none;background:none;cursor:pointer;' +
+    'color:inherit;font-size:14px;line-height:1;padding:0">×</button></span>'
+  ).join('');
+
+  box.querySelectorAll('[data-cm-del]').forEach((b) => {
+    b.addEventListener('click', () => {
+      _composeTo.splice(Number(b.dataset.cmDel), 1);
+      krRenderComposeChips();
+    });
+  });
+}
+
+async function krSearchContacts() {
+  const input = document.getElementById('cmTo');
+  const box = document.getElementById('cmHits');
+  if (!input || !box) return;
+
+  const q = input.value.trim();
+  const res = await safeJsonFetch('/api/mail/contacts?q=' + encodeURIComponent(q));
+  if (!res || !res.success) { box.style.display = 'none'; return; }
+
+  // 이미 고른 사람은 후보에서 뺀다
+  const picked = new Set(_composeTo.map((c) => c.email));
+  _composeHits = res.contacts.filter((c) => !picked.has(c.email));
+  _composeHint = _composeHits.length ? 0 : -1;
+
+  if (!_composeHits.length) {
+    box.innerHTML = '<div style="padding:12px 14px;font-size:12.5px;color:var(--text-tertiary)">' +
+      (q ? '찾는 곳이 없습니다. 메일 주소를 직접 입력하고 Enter 를 누르세요.' : '연락처가 없습니다.') +
+      '</div>';
+    box.style.display = 'block';
+    return;
+  }
+
+  krRenderHits();
+  box.style.display = 'block';
+}
+
+function krRenderHits() {
+  const box = document.getElementById('cmHits');
+  if (!box) return;
+  box.innerHTML = _composeHits.map((c, i) => {
+    const on = i === _composeHint;
+    return '<div class="cm-hit" data-i="' + i + '" style="padding:9px 13px;cursor:pointer;' +
+      'display:flex;align-items:baseline;gap:8px;' +
+      'background:' + (on ? 'var(--bg-surface-hover)' : 'transparent') + '">' +
+      '<span style="flex:none;font-size:11px;opacity:.75" title="' +
+      (c.from === 'internal' ? '사내' : c.from === 'mail' ? '받은 메일' : c.from === 'sent' ? '보낸 메일' : '리드') + '">' +
+      (c.from === 'internal' ? '👤' : c.from === 'lead' ? '🏢' : '📬') + '</span>' +
+      '<span style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-primary);' +
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(c.name) + '</span>' +
+      '<span style="flex:none;font-size:11.5px;font-family:monospace;color:var(--text-tertiary);' +
+      'max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+      escapeHtml(c.email) + '</span></div>';
+  }).join('');
+
+  box.querySelectorAll('.cm-hit').forEach((el) => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();               // blur 보다 먼저 먹게
+      krPickContact(Number(el.dataset.i));
+    });
+  });
+}
+
+function krPickContact(i) {
+  const c = _composeHits[i];
+  if (!c) return;
+  _composeTo.push({ name: c.name, email: c.email });
+  document.getElementById('cmTo').value = '';
+  document.getElementById('cmHits').style.display = 'none';
+  _composeHits = [];
+  krRenderComposeChips();
+  document.getElementById('cmTo').focus();
+}
+
+function krComposeKeydown(e) {
+  const box = document.getElementById('cmHits');
+  const open = box && box.style.display !== 'none' && _composeHits.length;
+
+  if (e.key === 'ArrowDown' && open) {
+    e.preventDefault();
+    _composeHint = (_composeHint + 1) % _composeHits.length;
+    krRenderHits();
+    return;
+  }
+  if (e.key === 'ArrowUp' && open) {
+    e.preventDefault();
+    _composeHint = (_composeHint - 1 + _composeHits.length) % _composeHits.length;
+    krRenderHits();
+    return;
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (open && _composeHint >= 0) { krPickContact(_composeHint); return; }
+    // 후보에 없으면 직접 친 주소로 본다
+    const raw = e.target.value.trim();
+    if (raw.includes('@')) {
+      _composeTo.push({ name: raw.split('@')[0], email: raw.toLowerCase() });
+      e.target.value = '';
+      krRenderComposeChips();
+    }
+    return;
+  }
+  if (e.key === 'Backspace' && !e.target.value && _composeTo.length) {
+    // 빈 칸에서 지우면 마지막 사람을 뺀다 (메일 앱에서 흔한 동작)
+    _composeTo.pop();
+    krRenderComposeChips();
+  }
+  if (e.key === 'Escape' && box) box.style.display = 'none';
+}
+
+async function krSendComposed() {
+  const subject = document.getElementById('cmSubject').value.trim();
+  const bodyHtml = document.getElementById('cmBody').innerHTML.trim();
+  const isAd = document.getElementById('cmAd').checked;
+  const status = document.getElementById('cmStatus');
+  const btn = document.getElementById('cmSend');
+
+  if (!_composeTo.length) { alert('받는 사람을 넣어 주세요.'); return; }
+  if (!subject) { alert('제목을 넣어 주세요.'); return; }
+  if (!bodyHtml || bodyHtml === '<br>') { alert('내용을 넣어 주세요.'); return; }
+
+  const names = _composeTo.map((c) => c.name).join(', ');
+  if (!confirm(
+    names + ' (' + _composeTo.length + '명)에게 보냅니다.\n\n' +
+    '제목: ' + subject.slice(0, 60) + '\n' +
+    (isAd ? '\n광고성으로 보냅니다 — (광고) 표기와 수신거부 링크가 붙습니다.\n' : '') +
+    '\n진행할까요?'
+  )) return;
+
+  btn.disabled = true;
+  status.textContent = '보내는 중...';
+
+  const res = await safeJsonFetch('/api/mail/compose', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: _composeTo.map((c) => c.email),
+      subject,
+      body: bodyHtml,
+      ad: isAd,
+    }),
+  });
+
+  btn.disabled = false;
+  status.textContent = '';
+
+  const box = document.getElementById('cmResult');
+  if (!res || !res.success) {
+    box.innerHTML = krCard(
+      '<div style="color:#b91c1c;font-size:13.5px;font-weight:700">보내지 못했습니다</div>' +
+      '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">' +
+      escapeHtml((res && res.error) || '알 수 없는 오류') + '</div>');
+    return;
+  }
+
+  box.innerHTML = krCard(
+    '<div style="font-size:14px;font-weight:800;color:#166534">✅ ' + res.sent + '통 보냈습니다</div>' +
+    '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px;line-height:1.7">' +
+    '보낸 계정 ' + escapeHtml(res.usedAccount.from) + '<br>' +
+    '보낸메일함에도 사본이 남았습니다.' +
+    (res.failed ? '<br><b style="color:#b91c1c">실패 ' + res.failed + '통</b>' : '') +
+    ((res.skipped || []).length
+      ? '<br>수신거부 주소라 제외: ' + res.skipped.map((e) => escapeHtml(e)).join(', ')
+      : '') +
+    '</div>' +
+    ((res.results || []).filter((r) => !r.ok).length
+      ? '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px;line-height:1.7">' +
+        res.results.filter((r) => !r.ok).map((r) =>
+          escapeHtml(r.to) + ' — ' + escapeHtml(r.error || '')).join('<br>') + '</div>'
+      : ''));
+
+  // 성공했으면 입력을 비운다 — 같은 메일을 두 번 보내는 사고를 막는다
+  if (res.sent) {
+    _composeTo = [];
+    krRenderComposeChips();
+    document.getElementById('cmSubject').value = '';
+    document.getElementById('cmBody').innerHTML = '';
+  }
+}
+
+/* ── 아이디 관리 (마스터 전용) ─────────────────────────────────────
+
+   쓰는 사람을 늘리고, 비밀번호를 잊은 사람에게 새로 정해 주는 곳.
+   마스터 아이디로 로그인했을 때만 메뉴에 뜬다 — 서브 계정이 서로의 비밀번호를
+   바꿀 수 있으면 계정을 나눈 의미가 없다.
+
+   비밀번호 재설정을 관리자가 하는 이유: 이 앱에는 메일로 재설정 링크를 보내는
+   기능이 없고, 넣는다 해도 그 메일함에 못 들어가는 상황이면 소용이 없다.
+   ───────────────────────────────────────────────────────────── */
+
+async function renderUserAdminPage() {
+  els.content.innerHTML = krCard('<div style="color:var(--text-tertiary);font-size:13px">불러오는 중...</div>');
+
+  const res = await safeJsonFetch('/api/users');
+  if (state.view !== 'tool-user-admin') return;
+
+  if (!res || !res.success) {
+    els.content.innerHTML = krCard(
+      '<div style="color:#b91c1c;font-size:13.5px;font-weight:700">계정 목록을 볼 수 없습니다</div>' +
+      '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">' +
+      '관리자 아이디로 로그인해야 합니다.</div>');
+    return;
+  }
+
+  const users = res.data || [];
+  const fmt = (d) => (d ? String(d).slice(0, 10) : '');
+
+  const rows = users.map((u) => {
+    const master = (u.username || '').toLowerCase() === 'admin' || (u.username || '').toLowerCase() === 'yogico';
+    return '<tr style="border-top:1px solid var(--border-subtle, var(--border-default))">' +
+      '<td style="padding:11px 12px;font-weight:700;color:var(--text-primary)">' +
+      escapeHtml(u.username) +
+      (master
+        ? '<span style="margin-left:7px;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:5px;' +
+          'background:var(--brand-soft,#e7f3f9);color:var(--brand-text,#1f6b8c)">관리자</span>'
+        : '') +
+      '</td>' +
+      '<td style="padding:11px 12px;font-size:12px;color:var(--text-tertiary);white-space:nowrap">' +
+      fmt(u.createdAt) + '</td>' +
+      '<td style="padding:11px 12px;text-align:right;white-space:nowrap">' +
+      '<button type="button" data-pw="' + escapeAttr(u.username) + '" ' +
+      'style="font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:7px;cursor:pointer;' +
+      'border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-secondary)">' +
+      '비밀번호 변경</button>' +
+      (master
+        ? ''
+        : ' <button type="button" data-del="' + escapeAttr(u.username) + '" ' +
+          'style="font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:7px;cursor:pointer;' +
+          'border:1px solid #fca5a5;background:#fef2f2;color:#b91c1c">삭제</button>') +
+      '</td></tr>';
+  }).join('');
+
+  els.content.innerHTML =
+    '<div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">' +
+    krCard(
+      krSectionTitle('👥 아이디 관리',
+        '이 앱을 쓰는 아이디를 늘리고, 비밀번호를 잊은 사람에게 새로 정해 줍니다. ' +
+        '관리자 아이디는 삭제할 수 없습니다 — 마지막 관리자를 지우면 이 화면에 다시 들어올 방법이 없어집니다.') +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:var(--bg-surface-alt);text-align:left">' +
+      '<th style="padding:9px 12px;font-weight:700;color:var(--text-secondary)">아이디</th>' +
+      '<th style="padding:9px 12px;font-weight:700;color:var(--text-secondary);width:110px">만든 날</th>' +
+      '<th style="padding:9px 12px"></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>'
+    ) +
+    krCard(
+      krSectionTitle('➕ 아이디 추가') +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">' +
+      '<input id="uaId" type="text" placeholder="아이디 (영문 소문자)" autocomplete="off" ' +
+      'style="' + KR_INPUT_STYLE + ';max-width:220px">' +
+      '<input id="uaPw" type="text" placeholder="비밀번호" autocomplete="off" ' +
+      'style="' + KR_INPUT_STYLE + ';max-width:200px">' +
+      '<button id="uaAdd" class="button primary" style="padding:9px 18px;font-size:13.5px;font-weight:700">' +
+      '추가</button></div>' +
+      '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:7px;line-height:1.6">' +
+      '새 아이디는 <b>메일 계정이 비어 있습니다.</b> 그 사람이 메일함을 보려면 ' +
+      '[📬 메일 계정 관리]에서 자기 메일을 등록해야 합니다.</div>'
+    ) +
+    '</div>';
+
+  els.content.querySelectorAll('[data-pw]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.pw;
+      const pw = prompt(`[${id}] 의 새 비밀번호를 입력하세요.`);
+      if (!pw) return;
+      const r = await safeJsonFetch('/api/users/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      alert(r && r.success ? `[${id}] 비밀번호를 바꿨습니다.` : (r && r.error) || '바꾸지 못했습니다.');
+    });
+  });
+
+  els.content.querySelectorAll('[data-del]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.del;
+      if (!confirm(`[${id}] 아이디를 지웁니다.\n\n그 아이디로 등록한 메일 계정은 남습니다.\n진행할까요?`)) return;
+      const r = await safeJsonFetch('/api/users/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (r && r.success) renderUserAdminPage();
+      else alert((r && r.error) || '지우지 못했습니다.');
+    });
+  });
+
+  document.getElementById('uaAdd')?.addEventListener('click', async () => {
+    const username = document.getElementById('uaId').value.trim().toLowerCase();
+    const password = document.getElementById('uaPw').value.trim();
+    if (!username || !password) { alert('아이디와 비밀번호를 모두 넣어 주세요.'); return; }
+    const r = await safeJsonFetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (r && r.success) renderUserAdminPage();
+    else alert((r && r.error) || '만들지 못했습니다.');
+  });
+}

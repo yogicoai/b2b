@@ -45,6 +45,11 @@ export default function Home() {
                 · 최근 2개월
               </span>
             </div>
+            {/* 메일 쓰기가 맨 위다. 메일함에서 하는 일이 읽기만은 아니고,
+                답장이 아닌 새 메일을 쓸 자리가 따로 있어야 한다. */}
+            <button className="nav-item" data-view="tool-compose" type="button" title="메일 쓰기 — 아는 상대에게 한 통 씁니다. 받는 사람은 초성으로 찾을 수 있습니다 (예: ㅅㅇㅇㅅ)">
+              <span className="nav-icon">✏️</span><span className="nav-label">메일 쓰기</span>
+            </button>
             <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
               <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
               <span className="nav-badge" data-nav-badge="inboxUnread"></span>
@@ -153,6 +158,12 @@ export default function Home() {
             {/* 로그인 아이디·비밀번호 — 사람마다 아이디가 따로 있다 (david 대표님 · hoon 전무님 …) */}
             <button className="nav-item" data-view="tool-crm-account" type="button" title="내 계정 관리 — 로그인 아이디 확인 · 비밀번호 변경">
               <span className="nav-icon">👤</span><span className="nav-label">내 계정 관리</span>
+            </button>
+            {/* 아이디 관리는 마스터만 쓴다. 서브 계정이 서로의 비밀번호를 바꿀 수 있으면
+                계정을 나눈 의미가 없다. 로그인한 아이디가 마스터가 아니면 app.js 가
+                이 줄을 숨긴다(하단 data-master-only). 서버도 403 으로 한 번 더 막는다. */}
+            <button className="nav-item" data-view="tool-user-admin" data-master-only="1" type="button" title="아이디 관리 — 쓰는 사람을 늘리고 비밀번호를 정해 줍니다 (관리자 전용)">
+              <span className="nav-icon">👥</span><span className="nav-label">아이디 관리</span>
             </button>
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
               <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>

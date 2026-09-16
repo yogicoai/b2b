@@ -1788,6 +1788,18 @@ async function _renderInner(seq) {
   if (typeof state.view === 'string' && !state.view.startsWith('pipeline-')) {
     clearCategoryTabs();
   }
+  if (state.view === "tool-user-admin") {
+    els.viewTitle.textContent = "👥 아이디 관리";
+    els.viewSubtitle.textContent = "쓰는 사람을 늘리고 비밀번호를 정해 줍니다. 관리자만 보입니다.";
+    renderUserAdminPage();
+    return;
+  }
+  if (state.view === "tool-compose") {
+    els.viewTitle.textContent = "✏️ 메일 쓰기";
+    els.viewSubtitle.textContent = "아는 상대에게 한 통 씁니다. 회사 메일로 그대로 나갑니다.";
+    renderComposeMailPage();
+    return;
+  }
   if (state.view === "tool-crawl") {
     els.viewTitle.textContent = "🔎 크롤링 실행";
     els.viewSubtitle.textContent = "네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다.";
@@ -15132,6 +15144,13 @@ function initSettingsModal() {
       
       if (isMaster && subIdSection) {
         subIdSection.style.display = 'block';
+      }
+
+      // 관리자 전용 메뉴는 마스터가 아닐 때 아예 없앤다.
+      // 숨기기만 하면 개발자도구로 눌러 볼 수 있어서, 화면을 지우고
+      // 서버도 403 으로 한 번 더 막는다(api/users).
+      if (!isMaster) {
+        document.querySelectorAll('.nav-item[data-master-only]').forEach((el) => el.remove());
       }
     }
   }).catch(console.error);
