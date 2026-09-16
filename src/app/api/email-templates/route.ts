@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
+import { isMasterUser } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { TEMPLATE_VARS, TEMPLATE_VAR_GROUPS } from '@/lib/template-vars';
@@ -12,8 +14,20 @@ export const runtime = 'nodejs';
  */
 export async function GET() {
   try {
+    // 양식은 쓴 사람 것이다. 다른 사람이 쓴 문구가 내 목록에 섞여 있으면
+    // 발송할 때 남의 양식을 고르게 되고, 고쳐 놓으면 그쪽 발송이 같이 바뀐다.
+    // 마스터는 전부 본다 — 누가 무엇으로 보내고 있는지 확인할 사람이 있어야 한다.
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     await dbConnect();
-    const templates = await EmailTemplate.find({}).sort({ updatedAt: -1 }).lean();
+    const scope = isMasterUser(user)
+      ? {}
+      // createdBy 가 빈 것은 계정을 나누기 전에 만든 양식이다. 아무에게도
+      // 안 보이면 쓰던 문구가 통째로 사라지므로 마스터만 보게 둔다.
+      : { createdBy: user };
+
+    const templates = await EmailTemplate.find(scope).sort({ updatedAt: -1 }).lean();
     return NextResponse.json({
       success: true,
       templates,
@@ -34,6 +48,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     const body = await req.json();
     if (!body?.name || !body?.subject || !body?.body) {
       return NextResponse.json(
@@ -54,7 +71,9 @@ export async function POST(req: Request) {
       isActive: body.isActive !== false,
       appendAccountSignature: body.appendAccountSignature !== false,
       attachments: atts.list,
-      createdBy: body.createdBy || '',
+      // 만든 사람을 박아 둔다. 요청 본문 값을 믿지 않는다 —
+      // 그러면 남의 이름으로 양식을 만들 수 있다.
+      createdBy: user,
     });
     return NextResponse.json({ success: true, template: t });
   } catch (e: any) {

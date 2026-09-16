@@ -8,7 +8,7 @@ export const maxDuration = 120;
 
 /**
  * POST /api/mail/backfill — [📥 전체 메일함 2달 가져오기]
- * Body: { accountId, days?: 60, cursor? }  — days 는 2달(KEEP_DAYS)을 넘길 수 없다 (runBackfill 이 자른다)
+ * Body: { accountId, days?: 60, cursor? }  — days 는 1달(KEEP_DAYS)을 넘길 수 없다 (runBackfill 이 자른다)
  *
  * 한 번에 다 못 가져오므로(서버 실행 시간 제한) 50초쯤 가져오고 cursor 를 돌려준다.
  * 화면은 done 이 올 때까지 cursor 를 넘겨 다시 부른다.

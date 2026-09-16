@@ -1607,3 +1607,25 @@ body.modal-open {
   /* 닫기는 오른쪽 위 구석에 고정 — 버튼 줄에 끼면 눌러야 할 것이 셋이 되어 헷갈린다 */
   .modal-header .modal-close { position: absolute; top: 10px; right: 12px; }
 }
+
+/* ── 대화 팝업: 대화 | 회신 좌우 반반 ────────────────────────────
+   세로로 쌓았을 때는 회신 칸(초안 생성·한글 대역본·에디터)이 커서 위쪽 대화를
+   밀어냈고, 화면이 좁으면 회신 칸의 머리가 잘려 나갔다. 좌우로 나누고 각자
+   스크롤되게 두면 어느 쪽도 잘리지 않는다.
+
+   좁은 화면에서는 반반이 둘 다 못 쓸 만큼 좁아지므로 다시 세로로 세운다. */
+@media (max-width: 900px) {
+  .conv-split {
+    grid-template-columns: 1fr !important;
+    /* 세로로 세우면 각 칸이 내용만큼 늘어나고, 스크롤은 바깥이 맡는다 */
+    overflow-y: auto !important;
+  }
+  .conv-split > div {
+    overflow-y: visible !important;
+    min-height: auto !important;
+  }
+  .conv-split > div + div {
+    border-left: none !important;
+    border-top: 1px solid var(--border-default);
+  }
+}

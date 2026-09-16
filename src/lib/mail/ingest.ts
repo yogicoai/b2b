@@ -23,7 +23,7 @@ import { localAnalyze } from './local-analyze';
 import { matchLead, shouldMoveToReplied } from './match-lead';
 import { listMailAccounts, resolveAccount, toImapConfig } from './accounts';
 import { KEEP_DAYS } from './retention';
-import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, type LearnedGroups } from './groups';
+import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, autoAssignGroup, getOwnDomains, type LearnedGroups } from './groups';
 import { syncSentReplies } from './reconcile';
 import { accountIdsForOwner } from './scope';
 
@@ -31,19 +31,23 @@ import { accountIdsForOwner } from './scope';
  * 거래처 학습(발신자→폴더명)을 **그 계정 주인이 볼 수 있는 메일** 안에서만 한다.
  * 전체 메일로 배우면 다른 아이디가 나눠 둔 거래처 폴더명이 내 새 메일에 붙어, 남의 거래처가 드러난다.
  */
-async function learnForOwner(owner: string, cache: Map<string, { learned: LearnedGroups | null; knownGroups: string[] }>) {
+async function learnForOwner(owner: string, cache: Map<string, { learned: LearnedGroups | null; knownGroups: string[]; ownDomains: Set<string> }>) {
   const key = owner || '(none)';
   const hit = cache.get(key);
   if (hit) return hit;
   let learned: LearnedGroups | null = null;
   let knownGroups: string[] = [];
+  // 자사 도메인 — 사내 메일이 거래처 폴더로 새는 것을 막는 데 쓴다.
+  // 메일 한 통마다 DB 를 다시 읽을 이유가 없어서 학습 결과와 같이 캐시한다.
+  let ownDomains = new Set<string>();
   try {
     const ids = owner ? await accountIdsForOwner(owner) : [];
     learned = await learnSenderGroups(ids);
     const g = await listGroups(undefined, ids);
     knownGroups = g.groups.map((x) => x.group).filter(Boolean);
+    ownDomains = await getOwnDomains();
   } catch { /* 학습이 실패해도 수집은 한다 (폴더 기반 분류는 그대로) */ }
-  const v = { learned, knownGroups };
+  const v = { learned, knownGroups, ownDomains };
   cache.set(key, v);
   return v;
 }
@@ -324,7 +328,7 @@ async function ingestFolder(
   opts: {
     limit: number; recent?: number; imapUser: string; settings: any;
     accountId: string; accountLabel: string;
-    learned?: LearnedGroups | null; knownGroups?: string[];
+    learned?: LearnedGroups | null; knownGroups?: string[]; ownDomains?: Set<string>;
     /** 기간 가져오기 — 이 날짜 이후 메일을 afterUid 뒤부터 limit 통 (runBackfill) */
     backfill?: { since: Date; afterUid: number };
   },
@@ -457,6 +461,34 @@ async function ingestFolder(
           group: doc.group,
           from: doc.from,
         });
+      }
+
+      // ── 그래도 폴더가 안 정해졌으면 자동 배치 ────────────────
+      //
+      // 위까지는 "이미 아는 상대" 만 잡는다 — 사람이 넣어둔 폴더, 전에 본 발신자,
+      // 제목에 있는 거래처명. 처음 보는 곳에서 온 메일은 전부 미분류로 남았다.
+      // 그러면 새 거래처와 주고받기 시작해도 [미분류]에 계속 쌓여서, 폴더링을
+      // 손으로 다시 돌릴 때까지 안 보인다.
+      //
+      // 여기서는 도메인 누적 통수를 알 수 없다(지금 들어오는 한 통만 본다).
+      // 그래서 자기 폴더를 파지 않고 '· 사내' / '· 광고·자동발송' / '· 기타' 로만
+      // 떨어뜨린다. 충분히 오간 곳은 [거래처 폴더 정리]가 돌 때 자기 폴더로 올라간다.
+      if (!humanFiled && !doc.group) {
+        const auto = autoAssignGroup(
+          { from: doc.from, classification: doc.classification },
+          opts.ownDomains || new Set(),
+        );
+        if (auto?.group) {
+          doc.group = auto.group;
+          doc.groupBy = `auto:${auto.by}`;
+          stat.grouped++;
+          doc.threadKey = threadKey({
+            subject: doc.subject,
+            messageId: doc.messageId,
+            group: doc.group,
+            from: doc.from,
+          });
+        }
       }
 
       // 로컬 1차 분석 — API 호출 없이(무료) 답변필요·기한 후보를 잡아둔다
@@ -600,7 +632,7 @@ export async function runBackfill(opts: {
   const batchSize = Math.max(5, Math.min(100, Number(opts.batchSize) || 40));
   const budgetMs = Math.max(10_000, Math.min(240_000, Number(opts.budgetMs) || 50_000));
 
-  const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), new Map());
+  const { learned, knownGroups, ownDomains } = await learnForOwner(String(account.owner || ''), new Map());
 
   let base: ImapConfig;
   try {
@@ -636,6 +668,7 @@ export async function runBackfill(opts: {
             accountLabel: out.accountLabel,
             learned,
             knownGroups,
+            ownDomains,
             backfill: { since: sinceDate, afterUid: cursor.afterUid },
           });
           out.fetched += r.stat.fetched;
@@ -739,12 +772,12 @@ export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult>
   // 폴더를 돌기 전에 한 번만 만든다. 이미 폴더로 분류된 메일에서
   // "이 발신자는 이 거래처" 를 배워, INBOX 로 들어온 새 메일을 AI 없이 분류한다.
   // 거래처 학습은 계정마다 그 주인 범위로 한다 (learnForOwner)
-  const learnCache = new Map<string, { learned: LearnedGroups | null; knownGroups: string[] }>();
+  const learnCache = new Map<string, { learned: LearnedGroups | null; knownGroups: string[]; ownDomains: Set<string> }>();
 
   for (const account of accounts) {
     const accountId = String(account._id);
     const accountLabel = account.accountName || account.smtpUser;
-    const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), learnCache);
+    const { learned, knownGroups, ownDomains } = await learnForOwner(String(account.owner || ''), learnCache);
 
     // 수집 폴더는 **계정마다 다르다**. 대표 메일함은 거래처별로 폴더가 나뉘어 있고,
     // 그 폴더명이 곧 거래처(group) 이름이 된다.
@@ -776,6 +809,7 @@ export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult>
               accountLabel,
               learned,
               knownGroups,
+              ownDomains,
             });
             result.folders.push(stat);
             result.fetched += stat.fetched;
