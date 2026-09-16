@@ -6703,24 +6703,45 @@ async function renderReviewPage() {
           <span style="flex:none;padding:6px 14px;background:var(--bg-surface-alt);border-radius:99px;
                        font-size:13px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Region || '—')}</span>
           ${lead.category ? `<span style="flex:none">${krCategoryBadge(lead.category)}</span>` : ''}
+          ${reviewScoreBadge(lead)}
           ${lead.recoScore ? `<span title="발송 우선순위 점수" style="flex:none;padding:6px 13px;background:#ecfdf5;
                        border-radius:99px;font-size:13px;font-weight:800;color:#047857">추천 ${lead.recoScore}</span>` : ''}
         </div>
         ${site ? `<a href="${escapeAttr(urlFor(site))}" target="_blank" rel="noreferrer"
              style="font-size:14.5px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
 
+        <!-- 크롤링으로 들어온 리드는 해외판 필드(Type·BrandsChannels)가 비어 있다.
+             네이버가 준 업종·주소·전화와 "어떤 검색어로 걸렸나"가 이 회사를 설명하는
+             실제 재료다. 값이 없는 줄은 row() 가 알아서 건너뛴다. -->
         <div style="margin-top:22px">
           ${row('이메일', escapeHtml(lead.Email || ''))}
-          ${row('업종', escapeHtml(lead.TypeKo || lead.Type || ''))}
+          ${row('업종', escapeHtml(lead.naverCategory || lead.TypeKo || lead.Type || ''))}
           ${row('전화', escapeHtml(lead.Phone || ''))}
+          ${row('주소', escapeHtml(lead.address || ''))}
+          ${row('찾은 검색어', lead.keyword ? escapeHtml(lead.Region ? lead.Region + ' ' + lead.keyword : lead.keyword) : '')}
           ${row('취급', escapeHtml(String(lead.BrandsChannels || '').slice(0, 300)))}
         </div>
+
+        <!-- AI 판정 근거. 국내판에서 "왜 이 회사인가"에 답하는 것이 이것이다 —
+             해외판의 Evidence 는 사람이 발굴하며 적어 둔 메모였는데, 크롤링 리드에는
+             그런 메모가 없고 대신 AI 가 규모를 판정하며 남긴 사유가 있다. -->
+        ${lead.verification && lead.verification.aiReasoning ? `
+          <div style="margin-top:22px;padding:18px 21px;background:var(--brand-softer,#f3f9fc);border-radius:13px;
+                      border-left:4px solid var(--brand,#3FA6D3)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <span style="font-size:11.5px;font-weight:800;color:var(--brand-text,#1f6b8c);letter-spacing:.5px">
+                AI 가 이렇게 봤습니다
+              </span>
+              ${reviewVerdictChip(lead)}
+            </div>
+            <div style="font-size:14.5px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.verification.aiReasoning).slice(0, 700))}</div>
+          </div>` : ''}
 
         ${lead.Evidence || lead.EvidenceKo ? `
           <div style="margin-top:22px;padding:18px 21px;background:var(--bg-surface-alt);border-radius:13px;
                       border-left:4px solid #2563eb">
             <div style="font-size:11.5px;font-weight:800;color:#2563eb;
-                        letter-spacing:.5px;margin-bottom:8px">왜 이 회사인가</div>
+                        letter-spacing:.5px;margin-bottom:8px">수집 메모</div>
             <!-- 한국어본이 있으면 그것을 보여준다. 쓰는 사람이 전부 한국인이라
                  영문을 매번 번역 버튼으로 여는 건 손이 많이 간다. -->
             <div style="font-size:14.5px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.EvidenceKo || lead.Evidence).slice(0, 700))}</div>
@@ -11489,6 +11510,38 @@ async function loadMailAccounts(force) {
  * 예약이 "5분마다" 나간다는 등 실제와 다른 내용을 담고 있었다. 화면과 설명이
  * 어긋나면 설명서를 믿지 않게 되므로, 지금 있는 화면만 순서대로 다시 적는다.
  */
+/**
+ * 검토 카드의 AI 점수 배지.
+ *
+ * 점수를 보여주는 이유: 판정 세 갈래(적합/애매/부적합)만으로는 고를 순서가 안 나온다.
+ * 한 번에 다 못 보내고 나눠 보내야 하므로, 좋은 곳이 먼저 나가야 실익이 있다.
+ */
+function reviewScoreBadge(lead) {
+  const v = lead && lead.verification;
+  const score = v && typeof v.score === 'number' ? v.score : null;
+  if (score === null) return '';
+  const tone = score >= 80 ? ['#dcfce7', '#166534']
+    : score >= 60 ? ['#e7f3f9', '#1f6b8c']
+    : score >= 40 ? ['#fef3c7', '#92400e']
+    : ['#fee2e2', '#b91c1c'];
+  return '<span title="AI 규모 점수 — 한 번에 몇 개가 들어갈 곳인가" ' +
+    'style="flex:none;padding:6px 13px;border-radius:99px;font-size:13px;font-weight:800;' +
+    'background:' + tone[0] + ';color:' + tone[1] + '">규모 ' + score + '점</span>';
+}
+
+/** 판정 + 확신도를 한 칩으로 (근거 문단 제목 옆에 붙는다) */
+function reviewVerdictChip(lead) {
+  const v = lead && lead.verification;
+  if (!v || !v.aiVerdict) return '';
+  const label = v.aiVerdict === 'target-fit' ? '규모 적합'
+    : v.aiVerdict === 'not-fit' ? '규모 부적합' : '애매함';
+  const conf = v.aiConfidence === 'high' ? '확신 높음'
+    : v.aiConfidence === 'low' ? '확신 낮음 · 직접 확인 권함'
+    : v.aiConfidence === 'medium' ? '확신 보통' : '';
+  return '<span style="font-size:11.5px;font-weight:700;color:var(--text-tertiary)">' +
+    escapeHtml(label) + (conf ? ' · ' + escapeHtml(conf) : '') + '</span>';
+}
+
 function renderUserGuidePage() {
   // 설명서는 **사이드바와 같은 순서·같은 이름**이어야 한다.
   // 이름이 하나라도 어긋나면 읽는 사람이 화면에서 그걸 못 찾고, 그 순간 설명서를 닫는다.

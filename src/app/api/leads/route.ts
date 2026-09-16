@@ -19,9 +19,6 @@ const LIST_PROJECTION = {
   naverCategory: 1,   // 네이버 업종 (예: "숙박>콘도,리조트")
   address: 1,
   keyword: 1,         // 이 업체를 찾아낸 검색어
-  'verification.score': 1,
-  'verification.aiVerdict': 1,
-  'verification.aiConfidence': 1,
   // 근거·업종의 한국어본 (화면은 이쪽을 우선 표시)
   EvidenceKo: 1, TypeKo: 1,
   // AI 판정 사유 — 이미 한국어로 저장돼 있는데 화면에 안 나오고 있었다.
@@ -51,6 +48,8 @@ const LIST_PROJECTION = {
   // 검증 배지 (verifyBucketOf 최소 필드)
   'verification.aiVerdict': 1, 'verification.aiVerifiedAt': 1,
   'verification.verifiedAt': 1, 'verification.score': 1,
+  // 확신도까지 같이 내려보낸다 — 검토 화면이 "AI 가 얼마나 확신하나"를 보여준다
+  'verification.aiConfidence': 1,
   // (aiReasoning · businessLevel · emailValid · websiteAlive · phoneMatch · linkedinValid · aiConfidence
   //  → 상세뷰에서만 사용 · 리스트 payload 에서 제거)
   createdAt: 1, deleted: 1,
