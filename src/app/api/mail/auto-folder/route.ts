@@ -4,7 +4,7 @@ import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
 import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 import {
-  learnSenderGroups, suggestGroupBySender, autoAssignGroup, getOwnDomains,
+  learnSenderGroups, suggestGroupBySender, autoAssignGroup, getOwnDomains, humanFiledSenders,
   GROUP_INTERNAL, GROUP_NOISE, GROUP_MISC, MIN_MAILS_FOR_OWN_FOLDER,
 } from '@/lib/mail/groups';
 
@@ -69,9 +69,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, dryRun, total: 0, moved: 0, folders: [], message: '분류할 메일이 없습니다.' });
   }
 
-  const [learned, ownDomainSet] = await Promise.all([
+  const [learned, ownDomainSet, human] = await Promise.all([
     learnSenderGroups(scope.accountIds),
     getOwnDomains(),
+    humanFiledSenders(scope.accountIds),
   ]);
 
   /**
@@ -106,7 +107,22 @@ export async function POST(req: Request) {
     // 2. 사람이 예전에 이 발신자를 넣어 둔 폴더가 있으면 그것
     // 3. 없으면 도메인·분류로 자동 배치
     const leadCompany = m.leadId ? companyByLead.get(m.leadId) : '';
-    const learnedHit = leadCompany ? null : suggestGroupBySender(m, learned);
+
+    // 광고·자동발송·뉴스레터로 **판정된** 것은, 사람이 직접 자리를 정해 준
+    // 발신자가 아닌 한 학습 이력을 따르지 않는다.
+    //
+    // 학습은 프로그램이 예전에 도메인만 보고 판 폴더까지 배운다. 그래서 한 번
+    // 'Flow'·'Hometax' 같은 폴더가 생기면 나중에 그게 협업툴 알림·국세청
+    // 자동발송이라는 걸 알게 돼도 계속 그 폴더로 돌아갔다. 지금 아는 것이
+    // 예전 추측보다 낫다.
+    const addr = String(m?.from?.address || '').toLowerCase();
+    const senderDomain = addr.split('@')[1] || '';
+    const filedByHuman = human.addrs.has(addr) || (senderDomain ? human.domains.has(senderDomain) : false);
+    const isNoise = ['ad', 'system', 'newsletter'].includes(String(m.classification || ''));
+
+    const learnedHit = leadCompany || (isNoise && !filedByHuman)
+      ? null
+      : suggestGroupBySender(m, learned);
     const decided = leadCompany
       ? { group: leadCompany, by: 'lead' }
       : learnedHit?.group

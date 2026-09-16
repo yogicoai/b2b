@@ -302,6 +302,45 @@ export interface GroupRow {
 }
 
 /**
+ * **사람이 직접 자리를 정해 준** 발신자 — 주소와 도메인.
+ *
+ * learnSenderGroups 는 group 이 채워진 메일이면 무엇이든 배운다. 그래서 프로그램이
+ * 도메인만 보고 판 폴더가 다음 실행의 "학습된 이력" 이 되어 자기 결정을 자기가
+ * 다시 근거로 삼는다. 그 폴더는 3~10통짜리라 사람 눈에는 잘 안 띄는데,
+ * flow.team(협업툴 알림)·국세청·쿠팡·뉴스레터가 각자 거래처 폴더를 차지하고
+ * 광고·자동발송 칸으로 내려오지 않은 게 그 결과였다.
+ *
+ * '·' 로 시작하는 칸을 안 배우는 규칙이 이미 있지만 그건 절반만 막는다.
+ * 프로그램이 **회사 이름처럼 생긴** 폴더를 판 경우는 그대로 통과한다.
+ *
+ * 그래서 사람 손을 거친 자리만 따로 모은다. 기준은 ingest.ts 와 같다 —
+ * 'folder'(대표가 이카운트 웹메일에서 직접 넣어 둔 것)와 'manual'(이 화면에서 옮긴 것).
+ */
+export async function humanFiledSenders(
+  accountIds?: string[] | null,
+): Promise<{ addrs: Set<string>; domains: Set<string> }> {
+  const match: any = {
+    groupBy: { $in: ['folder', 'manual'] },
+    group: { $nin: [null, ''] },
+    'from.address': { $nin: [null, ''] },
+  };
+  if (accountIds) match.accountId = { $in: accountIds };
+
+  const addrs = new Set<string>();
+  const domains = new Set<string>();
+  const rows: any[] = await InboundMail.find(match, { 'from.address': 1 }).lean();
+  for (const r of rows) {
+    const addr = String(r?.from?.address || '').toLowerCase();
+    if (!addr) continue;
+    addrs.add(addr);
+    const d = addr.split('@')[1] || '';
+    // 개인 메일 도메인은 회사를 특정하지 못한다 — 주소 일치로만 인정한다.
+    if (d && !FREE_MAIL.has(d)) domains.add(d);
+  }
+  return { addrs, domains };
+}
+
+/**
  * 현재 존재하는 거래처 목록.
  *
  * 화면 숫자는 **최근 한 달** 기준이다. 누적을 쓰면 577 같은 큰 수가 떠서

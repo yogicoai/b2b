@@ -126,10 +126,14 @@ export async function GET(req: Request) {
   }
 
   // ── 2. 리드의 대표 메일 ────────────────────────────────
-  const leads = await Lead.find(
+  //
+  // 검색어를 칠 때만 넣는다. 리드는 천 건이 넘고 대부분 아직 연락한 적 없는
+  // 곳이라, 창을 열자마자 다 뿌리면 정작 자주 쓰는 상대가 그 아래로 밀린다.
+  // 이름을 치기 시작하면 그때 후보에 들어온다.
+  const leads = q ? await Lead.find(
     { Email: { $nin: ['', null] }, deleted: { $ne: true } },
     { Company: 1, Email: 1, recoScore: 1, stage: 1 },
-  ).limit(3000).lean() as Array<Record<string, any>>;
+  ).limit(3000).lean() as Array<Record<string, any>> : [];
 
   for (const l of leads) {
     const email = String(l.Email || '').toLowerCase().trim();

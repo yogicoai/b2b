@@ -302,7 +302,7 @@ async function init() {
   renderFilters();
   bindEvents();
   startNavBadgePolling();
-  // 새 아이디 첫 로그인 — 내 메일함 1달치를 자동으로 가져온다 (첫 화면이 뜬 뒤 조금 있다가)
+  // 새 아이디 첫 로그인 — 내 메일함 2달치를 자동으로 가져온다 (첫 화면이 뜬 뒤 조금 있다가)
   setTimeout(startAutoBackfill, 2500);
   syncMailOnLogin();   // 밤사이 온 답장을 화면 열 때 한 번 당겨온다 (기다리지 않는다)
 
@@ -1875,7 +1875,7 @@ async function _renderInner(seq) {
   }
   if (state.view === "tool-deadlines") {
     els.viewTitle.textContent = "⏰ 기한 관리";
-    els.viewSubtitle.textContent = "회신 기한이 잡힌 메일 · 지난 것부터 순서대로 (최근 1개월).";
+    els.viewSubtitle.textContent = "회신 기한이 잡힌 메일 · 지난 것부터 순서대로 (최근 2개월).";
     renderDeadlinesPage();
     return;
   }
@@ -4959,7 +4959,7 @@ async function renderInboxPage(opts) {
         ${needsReplyOnly ? '' : `
           <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
             <button class="button" id="inboxIngestBtn" type="button">📥 지금 메일 가져오기</button>
-            <button class="button primary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 1달 메일을 전부 가져와 분류합니다">📥 전체 메일함 1달 가져오기</button>
+            <button class="button primary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다">📥 전체 메일함 2달 가져오기</button>
             <button class="button secondary" data-goto-view="tool-mail-settings" type="button">🔌 수신 설정</button>
           </div>`}
       </div>`;
@@ -5352,7 +5352,7 @@ async function renderInboxPage(opts) {
       ${filterChip('리드 연결됨', 'linked', '1')}
       ${filterChip('미연결', 'linked', '0')}
       <button class="button secondary" id="inboxIngestBtn" type="button" style="margin-left:auto">📥 메일 가져오기</button>
-      <button class="button secondary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 1달 메일을 전부 가져와 분류합니다 (새로 등록한 메일함은 처음에 한 번 눌러 주세요)">📥 1달 전체</button>
+      <button class="button secondary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다 (새로 등록한 메일함은 처음에 한 번 눌러 주세요)">📥 2달 전체</button>
       <!-- [🧠 AI 분석] 은 뺐다 — 한 번에 N통을 유료 분석하는 버튼이라 비용이 예측되지 않는다.
            분석 결과(한글 번역·요약·기한)를 *보는* 기능은 그대로다. 분석 자체는 개발자 쪽에서
            일괄로 돌려 DB 에 넣는다. 되살리려면 아래 주석을 풀면 된다 (핸들러는 살아 있다).
@@ -8718,7 +8718,7 @@ async function renderBriefingPage() {
     <div style="max-width:760px">
       <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px">
         직전 24시간 (${d(b.since)} ~ ${d(b.until)}) · 새 메일 ${b.newMails}건
-        · 합계는 <b>${escapeHtml(b.periodLabel || '최근 1개월')}</b> 기준
+        · 합계는 <b>${escapeHtml(b.periodLabel || '최근 2개월')}</b> 기준
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap">
@@ -11638,7 +11638,7 @@ function renderUserGuidePage() {
       ${sectionTitle('하루 흐름', '아침에 메일함을 보고, 그다음 파이프라인으로 갑니다.')}
 
       ${card('①', '📥', '받은 메일함 — 밤새 뭐가 왔나',
-        '이카운트 메일함에서 가져온 <b>최근 1개월</b> 수신 메일입니다. 업체별 폴더로 나뉘어 있고, 광고·자동발송은 <b>· 광고·자동발송</b> 폴더로 따로 빠집니다.',
+        '이카운트 메일함에서 가져온 <b>최근 2개월</b> 수신 메일입니다. 업체별 폴더로 나뉘어 있고, 광고·자동발송은 <b>· 광고·자동발송</b> 폴더로 따로 빠집니다.',
         '· 업체 폴더를 눌러 그 회사와 오간 메일만 모아 보기<br>' +
         '· <b>⚠️ 회신 필요</b> — 상대가 묻거나 요청했는데 아직 답하지 않은 것<br>' +
         '· <b>⏰ 기한 관리</b> — 본문에서 뽑아낸 회신 기한이 있는 것<br>' +
@@ -13684,7 +13684,7 @@ function mailAccountCardHtml(acc) {
           ` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-          <button class="acc-backfill-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" data-acc-label="${escapeAttr(acc.accountName || acc.smtpUser)}" type="button" style="font-size:11px;padding:5px 10px" title="이 메일함의 최근 1달 메일을 전부 가져와 분류합니다">📥 1달 가져오기</button>
+          <button class="acc-backfill-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" data-acc-label="${escapeAttr(acc.accountName || acc.smtpUser)}" type="button" style="font-size:11px;padding:5px 10px" title="이 메일함의 최근 2달 메일을 전부 가져와 분류합니다">📥 2달 가져오기</button>
           <button class="acc-verify-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="지금 SMTP 연결 재검증">🔄 검증</button>
           <button class="acc-edit-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px">✏ 수정</button>
           <button class="acc-delete-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px;color:#dc2626">🗑</button>
@@ -14119,7 +14119,7 @@ function openMailAccountModal(editId) {
 
       await loadMailAccounts(true);
       renderMailAccountsTool();
-      // 새로 등록한 메일함은 수집 위치가 없어 메일함이 0 · 0 · 0 으로 뜬다 — 묻지 않고 바로 1달치를 가져온다 (오른쪽 아래 %)
+      // 새로 등록한 메일함은 수집 위치가 없어 메일함이 0 · 0 · 0 으로 뜬다 — 묻지 않고 바로 2달치를 가져온다 (오른쪽 아래 %)
       if (!isEdit && newId) {
         runMailBackfill([{ id: String(newId), label: payload.accountName || payload.smtpUser }], { silent: true });
       }
@@ -15294,7 +15294,7 @@ function signaturePreviewHtml(acc) {
 }
 
 /**
- * 📥 전체 메일함 1달 가져오기 — /api/mail/backfill 을 done 이 올 때까지 이어 부른다.
+ * 📥 전체 메일함 2달 가져오기 — /api/mail/backfill 을 done 이 올 때까지 이어 부른다.
  *
  * 새 아이디로 처음 로그인하면 자동으로 돈다(startAutoBackfill). 창을 막지 않고 화면 오른쪽 아래에
  * "메일함 가져오는 중 · 37%" 만 띄운다 — 기다리는 동안 다른 화면을 볼 수 있다 (대표님 요청 2026-09-14).
@@ -15317,7 +15317,7 @@ async function runMailBackfill(accounts, opts = {}) {
   pill.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px">
       <span class="backfill-spin" style="display:inline-block;width:14px;height:14px;border:2px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:bfspin .8s linear infinite"></span>
-      <b style="flex:1">📥 메일함 1달치 가져오는 중</b>
+      <b style="flex:1">📥 메일함 2달치 가져오는 중</b>
       <b id="backfillPct" style="color:#2563eb;font-size:14px">0%</b>
       <button type="button" id="backfillStop" title="그만 가져오기 (다음에 이어서 가져옵니다)"
         style="border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;padding:0 2px">×</button>
@@ -15396,8 +15396,8 @@ async function runMailBackfill(accounts, opts = {}) {
 }
 
 /**
- * 새 아이디로 처음 로그인했을 때 — 아직 1달치를 안 가져온 내 메일 계정이 있으면 자동으로 시작한다.
- * 관리자(마스터) 계정은 자동으로 돌리지 않는다: 이미 쓰고 있던 메일함이라, 원할 때 [📥 1달 전체]를 누른다.
+ * 새 아이디로 처음 로그인했을 때 — 아직 2달치를 안 가져온 내 메일 계정이 있으면 자동으로 시작한다.
+ * 관리자(마스터) 계정은 자동으로 돌리지 않는다: 이미 쓰고 있던 메일함이라, 원할 때 [📥 2달 전체]를 누른다.
  */
 async function startAutoBackfill() {
   try {

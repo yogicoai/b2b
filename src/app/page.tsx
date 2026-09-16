@@ -42,7 +42,7 @@ export default function Home() {
             <div className="nav-section-label">
               📬 메일함
               <span style={{ fontWeight: 400, opacity: 0.75, marginLeft: 4, textTransform: 'none' }}>
-                · 최근 1개월
+                · 최근 2개월
               </span>
             </div>
             {/* 메일 쓰기가 맨 위다. 메일함에서 하는 일이 읽기만은 아니고,
@@ -50,15 +50,15 @@ export default function Home() {
             <button className="nav-item" data-view="tool-compose" type="button" title="메일 쓰기 — 아는 상대에게 한 통 씁니다. 받는 사람은 초성으로 찾을 수 있습니다 (예: ㅅㅇㅇㅅ)">
               <span className="nav-icon">✏️</span><span className="nav-label">메일 쓰기</span>
             </button>
-            <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 1개월 기준">
+            <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
               <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
               <span className="nav-badge" data-nav-badge="inboxUnread"></span>
             </button>
-            <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 1개월)">
+            <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
               <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
               <span className="nav-badge" data-nav-badge="inboxNeedsReply"></span>
             </button>
-            <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 1개월)">
+            <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 2개월)">
               <span className="nav-icon">⏰</span><span className="nav-label">기한 관리</span>
               <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
             </button>

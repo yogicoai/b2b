@@ -12,7 +12,7 @@ import { MailAccount } from '@/models/MailAccount';
  *   - 최근 MAIL_KEEP_BODY_DAYS(기본 14일) : 본문을 DB 에 그대로 둔다 — 자주 열어보는 것들이라 빨라야 한다.
  *   - 그보다 오래된 메일                   : 본문을 비운다. 열면 그때 서버에서 받아 온다 (lib/mail/body.ts).
  *   - 광고·자동발송·뉴스레터               : 기간과 무관하게 본문을 비운다 (다시 읽을 일이 없다).
- *   - MAIL_KEEP_DAYS(기본 30일) 이 지난 메일: 새로 **가져오지 않는다** (수집 창이 1달) — 이미 있는 것은
+ *   - MAIL_KEEP_DAYS(기본 60일) 이 지난 메일: 새로 **가져오지 않는다** (수집 창이 2달) — 이미 있는 것은
  *     제목·발신자·요약·AI 분석만 남겨 둔다. 목록과 업체 대화 이력이 끊기지 않게 지우지는 않는다.
  *
  * **다시 받아올 수 있는 것만 비운다.** 본문을 비우는 근거는 "원본이 메일 서버에 있다" 하나뿐이다.
@@ -23,11 +23,13 @@ import { MailAccount } from '@/models/MailAccount';
  */
 export const KEEP_BODY_DAYS = Number(process.env.MAIL_KEEP_BODY_DAYS) || 14;
 /**
- * 60일로 시작했다가 30일로 줄였다(2026-09). 두 달 치를 들고 있으면 문서가 불어나
- * 목록이 무거워지는데, 한 달 넘은 메일을 이 앱에서 다시 꺼내 보는 일이 없었다.
- * 원본은 이카운트 메일함에 그대로 있다 — 여기서 안 들고 있을 뿐이다.
+ * 수집·보관 창. 화면 숫자 기준(period.ts COUNT_PERIOD_DAYS)과 같은 길이여야 한다 —
+ * 한쪽만 길면 "목록에는 있는데 숫자에는 없는" 메일이 생긴다.
+ *
+ * 30일로 줄였다가 60일로 되돌렸다(2026-09). 선적·계약처럼 몇 주에 걸쳐 오가는
+ * 건이 한 달 창에서는 앞부분이 잘려 대화가 끊겨 보였다.
  */
-export const KEEP_DAYS = Number(process.env.MAIL_KEEP_DAYS) || 30;
+export const KEEP_DAYS = Number(process.env.MAIL_KEEP_DAYS) || 60;
 /** 목록·검색·AI 분석에 쓰는 미리보기 길이 */
 export const PREVIEW_CHARS = 4000;
 const NOISE = ['ad', 'system', 'newsletter'];
