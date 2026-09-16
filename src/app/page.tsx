@@ -149,6 +149,9 @@ export default function Home() {
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 보내는 주소와 서명을 등록합니다. 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀝니다">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정 관리</span>
             </button>
+            <button className="nav-item" data-view="tool-folder-names" type="button" title="거래처 폴더 이름 — 자동으로 붙은 폴더 이름(도메인 조각)을 읽기 편한 상호로 바꿉니다">
+              <span className="nav-icon">🏷</span><span className="nav-label">거래처 폴더 이름</span>
+            </button>
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
               <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
             </button>

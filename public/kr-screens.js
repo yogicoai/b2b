@@ -1231,3 +1231,103 @@ async function renderUserAdminPage() {
     else alert((r && r.error) || '만들지 못했습니다.');
   });
 }
+
+/* ── 거래처 폴더 이름 관리 ────────────────────────────────────────
+
+   자동 배치는 도메인에서 이름을 만든다. 그래서 회사 이름이 아니라 도메인 조각이
+   폴더명이 되는 경우가 많다 — Besko(㈜베스코해운항공), Osstempharma(오스템파마).
+   읽는 사람에게는 한글 상호가 맞다.
+
+   못 고치면 매번 "Besko 가 어디였더라"를 떠올려야 하고, 그 부담이 쌓이면
+   폴더를 안 보게 된다.
+   ───────────────────────────────────────────────────────────── */
+
+async function renderFolderNamesPage() {
+  els.content.innerHTML = krCard('<div style="color:var(--text-tertiary);font-size:13px">불러오는 중...</div>');
+
+  const res = await safeJsonFetch('/api/mail/groups');
+  if (state.view !== 'tool-folder-names') return;
+
+  if (!res || !res.success) {
+    els.content.innerHTML = krCard('<div style="color:#b91c1c">폴더 목록을 불러오지 못했습니다.</div>');
+    return;
+  }
+
+  const all = res.groups || [];
+  // · 로 시작하는 것은 코드가 이름으로 동작을 가르는 칸이라 못 바꾼다
+  const editable = all.filter((g) => g.group && !g.group.startsWith('·'));
+  const fixed = all.filter((g) => g.group && g.group.startsWith('·'));
+
+  const row = (g) =>
+    '<tr style="border-top:1px solid var(--border-subtle, var(--border-default))">' +
+    '<td style="padding:10px 12px">' +
+    '<input type="text" data-fn-from="' + escapeAttr(g.group) + '" value="' + escapeAttr(g.group) + '" ' +
+    'style="width:100%;max-width:280px;padding:7px 10px;font-size:13px;font-weight:700;' +
+    'border:1px solid var(--border-default);border-radius:7px;background:var(--bg-surface);' +
+    'color:var(--text-primary)"></td>' +
+    '<td style="padding:10px 12px;font-size:12.5px;color:var(--text-tertiary);white-space:nowrap">' +
+    (g.total || 0).toLocaleString() + '통</td>' +
+    '<td style="padding:10px 12px;text-align:right;white-space:nowrap">' +
+    '<button type="button" data-fn-save="' + escapeAttr(g.group) + '" ' +
+    'style="font-size:11.5px;font-weight:700;padding:5px 12px;border-radius:7px;cursor:pointer;' +
+    'border:1px solid #3FA6D3;background:#3FA6D3;color:#fff">바꾸기</button></td></tr>';
+
+  els.content.innerHTML =
+    '<div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">' +
+    krCard(
+      krSectionTitle('🏷 거래처 폴더 이름',
+        '자동 분류는 메일 도메인에서 이름을 만들어서, 회사 이름이 아니라 도메인 조각이 되는 경우가 많습니다 ' +
+        '(예: <b>Besko</b> → ㈜베스코해운항공). 읽기 편한 이름으로 바꾸세요. ' +
+        '이름을 바꾸면 그 폴더의 메일이 전부 따라가고, 이후 자동 분류가 덮어쓰지 않습니다.') +
+      (editable.length
+        ? '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:var(--bg-surface-alt);text-align:left">' +
+          '<th style="padding:9px 12px;font-weight:700;color:var(--text-secondary)">폴더 이름</th>' +
+          '<th style="padding:9px 12px;font-weight:700;color:var(--text-secondary);width:80px">메일</th>' +
+          '<th style="padding:9px 12px"></th></tr></thead><tbody>' +
+          editable.map(row).join('') + '</tbody></table>'
+        : '<div style="font-size:12.5px;color:var(--text-tertiary)">아직 거래처 폴더가 없습니다. ' +
+          '메일을 더 주고받으면 자동으로 만들어집니다.</div>')
+    ) +
+    (fixed.length
+      ? krCard(
+          krSectionTitle('바꿀 수 없는 칸',
+            '아래 셋은 프로그램이 동작을 가르는 데 쓰는 이름이라 바꿀 수 없습니다. ' +
+            '이름이 바뀌면 자동 분류가 어디로 보내야 할지 알 수 없게 됩니다.') +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          fixed.map((g) =>
+            '<span style="padding:5px 12px;font-size:12.5px;font-weight:700;border-radius:999px;' +
+            'background:var(--bg-surface-alt);color:var(--text-tertiary)">' +
+            escapeHtml(g.group) + ' <span style="font-weight:400">' + (g.total || 0) + '</span></span>').join('') +
+          '</div>')
+      : '') +
+    '</div>';
+
+  const save = async (from) => {
+    const input = els.content.querySelector('[data-fn-from="' + CSS.escape(from) + '"]');
+    const to = (input && input.value || '').trim();
+    if (!to || to === from) return;
+    const r = await safeJsonFetch('/api/mail/groups/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    });
+    if (r && r.success) {
+      alert('[' + from + '] → [' + to + '] · ' + r.moved + '통 옮겼습니다.');
+      renderFolderNamesPage();
+    } else {
+      alert((r && r.error) || '바꾸지 못했습니다.');
+    }
+  };
+
+  els.content.querySelectorAll('[data-fn-save]').forEach((b) => {
+    b.addEventListener('click', () => save(b.dataset.fnSave));
+  });
+  els.content.querySelectorAll('[data-fn-from]').forEach((input) => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      save(input.dataset.fnFrom);
+    });
+  });
+}

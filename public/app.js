@@ -1794,6 +1794,12 @@ async function _renderInner(seq) {
       && typeof clearCategoryTabs === 'function') {
     clearCategoryTabs();
   }
+  if (state.view === "tool-folder-names") {
+    els.viewTitle.textContent = "🏷 거래처 폴더 이름";
+    els.viewSubtitle.textContent = "자동으로 붙은 폴더 이름을 읽기 편하게 바꿉니다.";
+    renderFolderNamesPage();
+    return;
+  }
   if (state.view === "tool-user-admin") {
     els.viewTitle.textContent = "👥 아이디 관리";
     els.viewSubtitle.textContent = "쓰는 사람을 늘리고 비밀번호를 정해 줍니다. 관리자만 보입니다.";
