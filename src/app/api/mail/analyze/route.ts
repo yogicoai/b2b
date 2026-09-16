@@ -25,6 +25,7 @@ export const maxDuration = 300;
  * Body: {
  *   mailIds?: string[],   // 지정 시 그 메일만 (화면에서 개별 실행)
  *   limit?: number,       // 미지정 시 설정의 dailyAnalyzeLimit
+ *   days?: number,        // 며칠 치까지 (미지정 시 설정의 analyzeDays · 기본 14)
  *   estimateOnly?: boolean, // true 면 API 호출 없이 예상 비용만 (과금 0)
  * }
  */
@@ -51,8 +52,14 @@ export async function POST(req: Request) {
       // 고른 메일이 하나도 남지 않으면 "분석할 메일 없음(성공)" 이 아니라 거절 — 404 로 있는지도 알려주지 않는다
       if (!targets.length) return NextResponse.json(NOT_YOURS, { status: 404 });
     } else {
+      // 최근 N일만 본다 (기본 2주). 분석이 답하는 질문은 "회신해야 하나 · 기한이
+      // 언제인가" 인데, 한 달 지난 메일에 그 답이 필요한 경우가 거의 없다.
+      const days = Math.max(1, Math.min(90, Number(body?.days) || Number(settings.analyzeDays) || 14));
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
       targets = await InboundMail.find({
         ...mailFilter(scope),
+        date: { $gte: since },
         // 광고·자동발송은 사람이 읽을 것이 아니므로 번역할 이유가 없다
         classification: { $nin: ['ad', 'system'] },
         // 우리가 보낸 메일은 '할 일'이 아니라 기록이다

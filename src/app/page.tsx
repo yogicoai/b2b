@@ -34,6 +34,44 @@ export default function Home() {
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
+            {/* ══════════ 그룹 B · 메일함 (맨 위) ══════════
+                매일 가장 먼저 여는 곳이라 맨 위에 둔다 (대표님 요청 2026-09-15 · "메일함 상단 고정").
+                파이프라인이 '회사' 중심이라면 여기는 '메일' 중심.
+                리드에 매칭되지 않은 메일까지 전부 여기서 본다
+                (외부 B2B 메일 관리 도구를 대체하는 자리). */}
+            <div className="nav-section-label">
+              📬 메일함
+              <span style={{ fontWeight: 400, opacity: 0.75, marginLeft: 4, textTransform: 'none' }}>
+                · 최근 2개월
+              </span>
+            </div>
+            <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
+              <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
+              <span className="nav-badge" data-nav-badge="inboxUnread"></span>
+            </button>
+            <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
+              <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
+              <span className="nav-badge" data-nav-badge="inboxNeedsReply"></span>
+            </button>
+            <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 2개월)">
+              <span className="nav-icon">⏰</span><span className="nav-label">기한 관리</span>
+              <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
+            </button>
+            {/* 브리핑은 되살렸다 — 매일 아침 메일로 나가는 것과 같은 내용이라,
+                메일을 못 본 날 화면에서 바로 확인할 수 있어야 한다. */}
+            <button className="nav-item" data-view="tool-briefing" type="button" title="오늘의 브리핑 — 회신 필요·기한 임박·새 답장을 한 장으로. 매일 아침 같은 내용이 메일로도 갑니다">
+              <span className="nav-icon">📋</span><span className="nav-label">오늘의 브리핑</span>
+            </button>
+            {/* 휴지통은 숨김 — 화면 수를 줄이기 위해서다.
+                renderTrashPage 는 그대로 있고, 넣은 메일도 지워지지 않는다.
+            <button className="nav-item" data-view="tool-trash" type="button" title="휴지통 — 치워둔 메일. DB에서 지우지 않으므로 언제든 되돌릴 수 있습니다">
+              <span className="nav-icon">🗑</span><span className="nav-label">휴지통</span>
+              <span className="nav-badge" data-nav-badge="inboxTrash"></span>
+            </button>
+            */}
+
+            <div className="nav-divider"></div>
+
             {/* ══════════ 그룹 A · 리드 파이프라인 (메일함 아래) ══════════
                 회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
                 예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
@@ -60,7 +98,7 @@ export default function Home() {
             {/* [검증 대기] 도 뺐다. 크롤링 한 번이 발굴·메일추출·AI검증을 다 끝내고
                 [검증 완료] 또는 [검증 실패] 로 바로 떨어뜨린다. 기다리는 칸이 필요 없다. */}
             {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
-            <button className="nav-item active" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
+            <button className="nav-item" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
               <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
@@ -80,43 +118,6 @@ export default function Home() {
               <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
               <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
-
-            <div className="nav-divider"></div>
-
-            {/* ══════════ 그룹 B · 메일함 (맨 위) ══════════
-                매일 가장 먼저 여는 곳이라 맨 위에 둔다 (대표님 요청 2026-09-15 · "메일함 상단 고정").
-                파이프라인이 '회사' 중심이라면 여기는 '메일' 중심.
-                리드에 매칭되지 않은 메일까지 전부 여기서 본다
-                (외부 B2B 메일 관리 도구를 대체하는 자리). */}
-            <div className="nav-section-label">
-              📬 메일함
-              <span style={{ fontWeight: 400, opacity: 0.75, marginLeft: 4, textTransform: 'none' }}>
-                · 최근 2개월
-              </span>
-            </div>
-            <button className="nav-item" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
-              <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
-              <span className="nav-badge" data-nav-badge="inboxUnread"></span>
-            </button>
-            <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
-              <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
-              <span className="nav-badge" data-nav-badge="inboxNeedsReply"></span>
-            </button>
-            <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 2개월)">
-              <span className="nav-icon">⏰</span><span className="nav-label">기한 관리</span>
-              <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
-            </button>
-            {/* 브리핑·휴지통은 숨김 — 화면 수를 줄이기 위해서다.
-                기능과 데이터는 그대로 살아 있고 (renderBriefingPage / renderTrashPage),
-                주석만 풀면 즉시 돌아온다. 휴지통에 넣은 메일도 지워지지 않는다.
-            <button className="nav-item" data-view="tool-briefing" type="button" title="오늘의 브리핑 — 회신 필요·기한 임박·새 답장을 한 장으로. 매일 아침 메일로도 받을 수 있습니다">
-              <span className="nav-icon">📋</span><span className="nav-label">오늘의 브리핑</span>
-            </button>
-            <button className="nav-item" data-view="tool-trash" type="button" title="휴지통 — 치워둔 메일. DB에서 지우지 않으므로 언제든 되돌릴 수 있습니다">
-              <span className="nav-icon">🗑</span><span className="nav-label">휴지통</span>
-              <span className="nav-badge" data-nav-badge="inboxTrash"></span>
-            </button>
-            */}
 
             <div className="nav-divider"></div>
 

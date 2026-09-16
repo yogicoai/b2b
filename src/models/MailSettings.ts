@@ -55,6 +55,15 @@ export interface IMailSettings extends Document<string> {
   autoAnalyze: boolean;           // 수집 직후 AI 분석까지 자동 실행할지
                                   // 기본 false — 켜면 수집할 때마다 상한 없이 과금됨
   dailyAnalyzeLimit: number;      // 하루 AI 요약 최대 통수 (기본 20 · 비용 상한)
+  /**
+   * 며칠 치까지 분석할지 (기본 14일).
+   *
+   * 메일함은 2개월을 들고 있지만 분석은 2주면 된다. 분석이 답하는 질문이
+   * "회신해야 하나 · 기한이 언제인가" 인데, 한 달 지난 메일에 그 답이 필요한 경우가
+   * 거의 없다. 오래된 것까지 훑으면 통수만큼 돈이 나가고, 정작 오늘 온 메일이
+   * 하루 상한에 밀려 요약되지 않는다.
+   */
+  analyzeDays: number;
 
   // ── 일일 브리핑 ────────────────────────────────────────
   briefingEmail: string;          // 비우면 메일 발송 없이 화면에서만
@@ -96,6 +105,7 @@ const MailSettingsSchema = new Schema<IMailSettings>({
   claudeModel: { type: String, default: 'claude-haiku-4-5' },
   autoAnalyze: { type: Boolean, default: false },
   dailyAnalyzeLimit: { type: Number, default: 20 },
+  analyzeDays: { type: Number, default: 14 },
 
   briefingEmail: { type: String, default: '' },
   briefingDays: { type: Number, default: 1 },

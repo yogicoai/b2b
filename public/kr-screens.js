@@ -78,6 +78,7 @@ const KR_INPUT_STYLE =
 
 var _crawlJobId = null;      // 지금 보고 있는 작업
 var _crawlTimer = null;      // 진행률 폴링
+var _crawlNavigated = false; // 완료 후 한 번만 데려간다 (폴링마다 튕기면 안 된다)
 
 const KR_FIND_STATE = {
   found:      { icon: '🔎', label: '수집',        color: 'var(--text-secondary)' },
@@ -199,6 +200,7 @@ async function krStartCrawl() {
     return;
   }
   _crawlJobId = res.jobId;
+  _crawlNavigated = false;
   krPollCrawl();
 }
 
@@ -309,11 +311,28 @@ function krRenderCrawlProgress(job) {
       : '') +
 
     (job.status === 'done'
-      ? '<div style="margin-top:14px;padding:10px 12px;background:#dcfce7;border-radius:8px;font-size:12.5px;color:#166534">' +
+      ? '<div style="margin-top:14px;padding:11px 13px;background:#dcfce7;border-radius:8px;font-size:12.5px;color:#166534">' +
         '적합 <b>' + (job.verified || 0).toLocaleString() + '곳</b>이 [✅ AI 검증 완료]에 추가됐습니다. ' +
-        '거기서 보낼 곳을 골라 발송 리스트로 옮기세요.</div>'
+        '<b>잠시 후 그 화면으로 넘어갑니다.</b>' +
+        '<button type="button" id="krGoVerifiedNow" style="margin-left:8px;font-size:11.5px;font-weight:700;' +
+        'padding:3px 10px;border-radius:99px;border:1px solid #16653455;background:#16653412;' +
+        'color:#166534;cursor:pointer">지금 보기</button></div>'
       : '')
   );
+
+  // 끝났으면 결과가 있는 곳으로 데려간다. 다 돌려놓고 "이제 어디로 가지"를
+  // 다시 찾게 하면 안 된다. 넘어갈 때 **이번에 돌린 분류**를 골라 둔 채로 간다 —
+  // 방금 리조트를 캤는데 전체 목록이 열리면 새로 들어온 것이 어디 있는지 안 보인다.
+  if (job.status === 'done' && !_crawlNavigated) {
+    _crawlNavigated = true;
+    const go = () => {
+      state.categoryFilter = job.category || null;
+      document.querySelector('.nav-item[data-view="pipeline-verified"]')?.click();
+    };
+    document.getElementById('krGoVerifiedNow')?.addEventListener('click', go);
+    // 결과 숫자를 읽을 틈은 준다
+    setTimeout(() => { if (state.view === 'tool-crawl') go(); }, 4000);
+  }
 }
 
 /* ── 키워드 관리 ─────────────────────────────────────────────────── */
@@ -528,7 +547,18 @@ function clearCategoryTabs() {
    화면이 그 단위로 갈라져 있어야 "지금 무엇을 보내는 중인지"가 분명해진다.
    ───────────────────────────────────────────────────────────── */
 
-var _outboxCategory = null;   // null = 전체
+/**
+ * 분류 선택은 화면마다 따로 들지 않는다 — state.categoryFilter 하나만 본다.
+ *
+ * 예전에는 목록 탭이 state.categoryFilter, 발송 관리가 _outboxCategory 로 갈려 있었다.
+ * 그래서 [검증 완료]에서 리조트를 골라 놓고 [발송 관리]로 넘어가면 다시 '전체'가 됐고,
+ * 리조트만 보내려던 사람이 224곳 전체를 보게 됐다. 화면을 옮겨도 "지금 무엇을
+ * 보고 있는지"는 그대로여야 한다.
+ */
+Object.defineProperty(window, '_outboxCategory', {
+  get() { return state.categoryFilter || null; },
+  set(v) { state.categoryFilter = v || null; },
+});
 
 /** 리드든 예약이든 카테고리를 꺼낸다 (예약은 리드를 거쳐서 찾는다) */
 function krCategoryOf(item, leadLookup) {

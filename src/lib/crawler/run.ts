@@ -18,7 +18,7 @@ import { Keyword } from '@/models/Keyword';
 import { CrawlJob } from '@/models/CrawlJob';
 import { searchLocal, type NaverPlace } from './naver';
 import { crawlHomepage } from './homepage';
-import { extractEmails } from './extract-email';
+import { extractEmails, keepLikelyOwnEmails } from './extract-email';
 import { REGIONS, regionFromAddress } from '@/lib/domain/regions';
 import { getCategory, categoryLabel, type CategoryKey } from '@/lib/domain/categories';
 import { findUnsubscribed } from '@/models/Unsubscribe';
@@ -165,6 +165,10 @@ export async function runCrawlJob(opts: CrawlOptions): Promise<void> {
         }
       }
       if (!emails.length && place.description) emails = extractEmails(place.description);
+
+      // 그 사이트와 무관한 도메인은 떨군다 — 페이지에 박힌 남의 스크립트·위젯 주소다.
+      // 첫 크롤에서 5개 중 4개가 그런 것이었다 (ic.net · cdninstagram.com · office.com).
+      emails = keepLikelyOwnEmails(emails, place.url);
 
       // 한 번 거부한 주소로 다시 접근하지 않는다 — 수집 단계에서 미리 털어낸다
       if (emails.length) {
