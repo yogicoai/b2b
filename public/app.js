@@ -1577,7 +1577,7 @@ async function _renderInner(seq) {
     'pipeline-ai-searched': { stage: 'ai-searched', title: '🤖 AI 서칭 결과',       sub: 'Claude 가 웹에서 자동 발굴한 K-뷰티 B2B 후보. 검토 후 검증대기(추가 검증) / 검증 완료(즉시 활용) / 제외로 이동.' },
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
     'pipeline-verified':    { stage: 'verified',    title: '✅ AI 검증 완료',          sub: '검증을 통과해 메일을 보낼 수 있는 곳입니다. 아닌 곳은 빼주세요.' },
-    'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
+    'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 규모·업종이 안 맞는다고 판정. 잘못 걸러진 곳은 수동으로 검증완료로 되돌릴 수 있습니다.' },
     // pipeline-contacted 는 여기 두지 않는다 — 위에서 renderOutboxPage 로 먼저 빠진다.
     'pipeline-replied':     { stage: 'replied',     title: '💬 답장 받음',            sub: '답장이 온 곳입니다. 답장하거나, 아닌 곳은 빼주세요.' },
     'pipeline-negotiating': { stage: 'negotiating', title: '🤝 대화 진행 중',        sub: '조건/일정/가격 등 실제 협상 오가는 상태.' },
@@ -1613,7 +1613,7 @@ async function _renderInner(seq) {
           // 제목도 바꾼다 — 실패 목록을 보는데 제목이 '✅ AI 검증 완료' 로 남아 있었다
           els.viewTitle.textContent = '🚫 검증 실패';
           els.viewSubtitle.textContent = 'AI 가 거른 곳과 보낼 메일 주소가 없는 곳입니다. 잘못 빠진 곳은 행의 [→ ✅ AI 검증 완료]로 되돌립니다.';
-          displayInfo = { ...s, title: '🚫 검증 실패', sub: 'AI가 K-beauty 무관으로 판정. 수동으로 성공 탭으로 되돌리기 가능.' };
+          displayInfo = { ...s, title: '🚫 검증 실패', sub: 'AI가 규모·업종이 안 맞는다고 판정. 수동으로 되돌릴 수 있습니다.' };
         }
       }
       const sub = serverStage === 'verified' ? (state.verifiedSubFilter || 'all') : null;
@@ -2104,7 +2104,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
             </div>
           </div>
           <!-- '완전 삭제' 가 아니다. 목록에서 감출 뿐이고 되살릴 수 있다.
-               AI 판정은 틀릴 수 있어서(실제로 진짜 바이어가 걸러진 적이 있다)
+               AI 판정은 틀릴 수 있어서(실제로 규모 있는 곳이 잘못 걸러진 적이 있다)
                한 번 지우면 되돌릴 방법이 없는 쪽으로 두면 안 된다.
                건수는 서버에서 다시 세므로 여기 숫자는 안내용이다. -->
           <button id="deleteAllFailedHeroBtn" type="button"
@@ -3223,7 +3223,7 @@ function renderComposeModal() {
       if (lead[k]) out[k] = lead[k];
     }
     out.SenderName = '요기보';
-    out.SenderCompany = 'Yogico';
+    out.SenderCompany = '요기보';
     out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
     return out;
   };
@@ -3543,7 +3543,7 @@ function renderComposeModal() {
     const previewLead = findLeadForPopup(_composeState.previewLeadId);
     const vars = {};
     for (const v of state.email.variables) vars[v.key] = (previewLead?.[v.key] || v.example || '');
-    vars.SenderName = '요기보'; vars.SenderCompany = 'Yogico'; vars.SenderEmail = _mailerEnvCache?.from || '';
+    vars.SenderName = '요기보'; vars.SenderCompany = '요기보'; vars.SenderEmail = _mailerEnvCache?.from || '';
     const s = e.target.value.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, k) => vars[k] != null ? String(vars[k]) : `{{${k}}}`);
     const titleEl = document.querySelector('#composeModalRoot .verify-hero-card') || document.querySelector('#composeModalRoot [data-preview-subject]');
     // 간단 fallback: 재렌더
@@ -6040,9 +6040,9 @@ async function runLegacyAiVerify() {
     `🧠 AI 검증을 시작합니다.\n\n` +
     `대상       ${c.target.toLocaleString()}곳 (아직 AI가 안 본 곳)\n` +
     `예상 요금  약 ₩${c.cost.krw.toLocaleString()} (${c.cost.model})\n` +
-    (c.korea ? `제외       한국 기업 ${c.korea.toLocaleString()}곳\n` : '') +
+    (c.korea ? `한국 기업    ${c.korea.toLocaleString()}곳\n` : '') +
     `\n판정 결과에 따라 자동으로 나뉩니다.\n` +
-    `  · K-뷰티 바이어  → [AI 검증 완료] 로 이동\n` +
+    `  · 규모 적합      → [AI 검증 완료] 로 이동\n` +
     `  · 무관           → [보관함] 으로 이동\n` +
     `  · 애매함         → 그대로 두고 직접 검토 대상\n\n` +
     `메일은 보내지 않습니다. 진행할까요?`,
@@ -10165,7 +10165,7 @@ function aiVerdictBadgeHtml(lead) {
   const fullReasoning = v.aiReasoning || '';
   const briefReasoning = summarizeReasoning(fullReasoning, 60);
   const style = {
-    'target-fit': { bg: '#dcfce7', fg: '#166534', bd: '#22c55e', label: '🧠 진성 바이어' },
+    'target-fit': { bg: '#dcfce7', fg: '#166534', bd: '#22c55e', label: '🧠 규모 적합' },
     'maybe':        { bg: '#fef3c7', fg: '#92400e', bd: '#f59e0b', label: '🧠 모호' },
     'not-fit':    { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: '🧠 무관' },
   }[verdict] || { bg: '#f1f5f9', fg: '#475569', bd: '#94a3b8', label: '🧠 AI 검증됨' };
@@ -10957,7 +10957,7 @@ async function renderB2BEmailManager() {
         <label style="font-size:12px;color:var(--text-secondary);font-weight:700">제목 <span style="color:#dc2626">*</span></label>
         <input id="templateSubjectInput" type="text" value="${escapeAttr(ed.subject)}"
           style="width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-top:4px;background:#ffffff;color:#0f172a"
-          placeholder="예: K-beauty partnership inquiry — [회사명]">
+          placeholder="예: [회사명] 휴게공간 제안 — 요기보">
         ${ed.adPrefix ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">실제 발송 제목: <code style="color:#dc2626;font-weight:600">(광고)</code> ${escapeHtml(ed.subject || '(제목 미입력)')}</div>` : ''}
       </div>
 
@@ -11492,7 +11492,7 @@ function renderUserGuidePage() {
       <div style="padding:24px 26px;border-radius:16px;
                   background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd">
         <h2 style="margin:0 0 8px;font-size:21px;font-weight:800;color:#0f2d6b">
-          해외 바이어를 찾아 메일을 보내고, 답장을 관리하는 곳입니다
+          국내 B2B 업체를 찾아 메일을 보내고, 답장을 관리하는 곳입니다
         </h2>
         <div style="font-size:13.5px;color:#1e40af;line-height:1.85">
           왼쪽 메뉴는 <b>네 묶음</b>입니다 — ① 메일함 ② 리드 파이프라인 ③ 직접 올린 업체 ④ 설정·도구.<br>
@@ -11559,7 +11559,7 @@ function renderUserGuidePage() {
       ${stepCard(6, '📬', '메일 계정 관리 — 보내는 주소와 서명',
         '메일을 보낼 회사 주소와 서명을 등록합니다. <b>대표 계정</b>을 정하면 받은 메일함·회신 필요·기한 관리가 그 계정 기준으로 바뀝니다.',
         `<b>[+ 계정 추가]</b> 로 등록하고 <b>[✏ 수정]</b> 에서 보내는 사람 이름·직함·회사·전화를 채웁니다.<br>
-         이 정보가 메일 끝 <b>서명</b>으로 붙습니다. 해외로 가는 메일이므로 <b>영문으로</b> 적어 두시는 것이 좋습니다.`,
+         이 정보가 메일 끝 <b>서명</b>으로 붙습니다. 국내 업체에 가는 메일이므로 <b>국문으로</b> 적어 주세요.`,
         '')}
 
       ${stepCard(7, '📝', '메일 양식 — 보낼 문구를 정합니다',
@@ -11678,7 +11678,7 @@ function outboxPreviewVars(lead) {
     if (lead && lead[k]) out[k] = lead[k];
   }
   out.SenderName = '요기보';
-  out.SenderCompany = 'Yogico';
+  out.SenderCompany = '요기보';
   out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
   return out;
 }
@@ -14458,7 +14458,7 @@ function verifyDetailsHtml(lead) {
 
   const v = lead?.verification;
   if (!v || !v.verifiedAt) {
-    // AI 판정이 있는데 '아직 검증되지 않았습니다'가 뜨면 모순으로 읽힌다 (위에 '진성 바이어'가 보이는데).
+    // AI 판정이 있는데 '아직 검증되지 않았습니다'가 뜨면 모순으로 읽힌다 (위에 '규모 적합'가 보이는데).
     // 없는 툴바 버튼을 가리키던 안내도 뺐다.
     if (v && (v.aiVerdict || v.aiVerifiedAt)) return '';
     return `<div style="font-size:13px;color:#9ca3af">⏳ 아직 자동 점검(사이트·메일 형식)을 하지 않았습니다.</div>`;
@@ -14520,7 +14520,7 @@ function verifyDetailsHtml(lead) {
 // AI 판단 결과 행 — verifyDetailsHtml 안에서 사용
 function aiVerdictRowHtml(v) {
   const verdictMap = {
-    'target-fit': { icon: '✅', label: '진성 K-beauty 바이어', color: '#166534', bg: '#dcfce7' },
+    'target-fit': { icon: '✅', label: '규모 적합 (타깃)', color: '#166534', bg: '#dcfce7' },
     'maybe':        { icon: '⚠',  label: '모호 / 가능성 있음',  color: '#92400e', bg: '#fef3c7' },
     'not-fit':    { icon: '❌', label: '무관 산업',           color: '#991b1b', bg: '#fee2e2' },
   };
@@ -14685,7 +14685,7 @@ function fillEditModalFields(lead) {
     if (!reason) { box.style.display = 'none'; box.innerHTML = ''; }
     else {
       const VERDICT = {
-        'target-fit': { label: '진성 바이어', bg: '#dcfce7', fg: '#166534' },
+        'target-fit': { label: '규모 적합', bg: '#dcfce7', fg: '#166534' },
         'maybe':        { label: '모호 — 사람 판단 필요', bg: '#fef3c7', fg: '#92400e' },
         'not-fit':    { label: '무관', bg: '#fee2e2', fg: '#991b1b' },
       };
@@ -16238,7 +16238,7 @@ async function startAIVerification() {
       result.style.display = '';
       result.innerHTML = `
         <strong style="color:#1e1b4b">🎉 AI 정밀 검증 완료</strong><br>
-        ✅ 진성 바이어 ${tallies['target-fit']}건  ·
+        ✅ 규모 적합 ${tallies['target-fit']}건  ·
         ⚠ 모호 ${tallies.maybe}건  ·
         ❌ 무관 ${tallies['not-fit']}건
         ${tallies.failed > 0 ? `<br><span style="color:#dc2626">⚠ API 호출 실패 ${tallies.failed}건 — 환경변수/네트워크 확인</span>` : ''}
