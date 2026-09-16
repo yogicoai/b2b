@@ -486,9 +486,25 @@ export function autoAssignGroup(
   return name ? { group: name, by: 'sender-domain' } : null;
 }
 
+/**
+ * 등록된 발송 계정에 안 잡히는 자사·계열 도메인.
+ *
+ * getOwnDomains 는 MailAccount 에 등록된 주소의 도메인만 본다. 그런데 사내 메일이
+ * 그 주소로만 오는 게 아니다 — yogibo.inc 로 오간 47통이 "Yogibo" 라는 거래처
+ * 폴더로 잡혔다. 계열 도메인은 계정 등록 여부와 무관하므로 여기 적어 둔다.
+ *
+ * 환경변수 OWN_MAIL_DOMAINS 로 덧붙일 수 있다 (쉼표 구분).
+ */
+const EXTRA_OWN_DOMAINS = ['yogibo.inc', 'yogico.kr', 'yogibo.co.kr'];
+
 /** 자사 도메인 집합 — 라우트에서 재사용할 수 있게 노출한다 */
 export async function getOwnDomains(): Promise<Set<string>> {
   const out = new Set<string>();
+  for (const d of EXTRA_OWN_DOMAINS) out.add(d);
+  for (const d of String(process.env.OWN_MAIL_DOMAINS || '').split(',')) {
+    const t = d.trim().toLowerCase();
+    if (t) out.add(t);
+  }
   try {
     const accounts: any[] = await MailAccount.find({}, { smtpUser: 1, fromAddress: 1 }).lean();
     for (const a of accounts) {

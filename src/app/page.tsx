@@ -34,6 +34,72 @@ export default function Home() {
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
+            {/* ══════════ 그룹 C · import 하여 올린 데이터 ══════════
+                엑셀로 직접 올린 데이터는 AI 가 발굴한 리드와 성격이 다르다.
+                출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
+                다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
+                보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
+            {/* ══════════ 그룹 C · 키워드 발굴 (국내판 전용) ══════════
+                해외판에는 없던 자리다. 해외 바이어는 명단을 엑셀로 받아 올렸지만,
+                국내 B2B 는 네이버 검색으로 직접 캐내야 한다. 캐는 일(키워드·지역)과
+                캔 것을 보는 일(수집함)이 다르므로 메뉴를 나눴다. */}
+            <div className="nav-section-label">🧲 키워드 발굴</div>
+            <button className="nav-item" data-view="tool-crawl" type="button" title="크롤링 실행 — 카테고리·지역·키워드를 골라 네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다">
+              <span className="nav-icon">🔎</span><span className="nav-label">크롤링 실행</span>
+            </button>
+            <button className="nav-item" data-view="tool-keywords" type="button" title="키워드 관리 — 카테고리별 검색 키워드를 추가·수정합니다. 새 키워드를 넣어야 새 업체가 쌓입니다">
+              <span className="nav-icon">🏷</span><span className="nav-label">키워드 관리</span>
+            </button>
+            <button className="nav-item" data-view="tool-categories" type="button" title="카테고리 현황 — 5개 타깃(공공·기업·병의원·리조트·스포츠)별 수집·검증·발송 집계">
+              <span className="nav-icon">📊</span><span className="nav-label">카테고리 현황</span>
+            </button>
+
+            <div className="nav-divider"></div>
+
+            {/* ══════════ 그룹 A · 리드 파이프라인 (메일함 아래) ══════════
+                회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
+                예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
+                뒷부분이라 끊을 이유가 없었다. */}
+            <div className="nav-section-label">📊 리드 파이프라인</div>
+            {/* 가져오기(CSV 업로드)는 숨김 — 리드는 AI 서칭으로 들어오고,
+                클라이언트가 엑셀을 직접 올릴 일이 없다. 되살리려면 주석만 풀면 된다.
+            <button className="nav-item" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
+              <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
+            </button>
+            */}
+            {/* 국내판은 이 두 단계를 되살려 둔다.
+                해외판에서는 발굴을 개발자가 워크플로우로 돌려 결과를 바로 [검증 완료]에
+                넣었기 때문에 둘 다 늘 0건이라 숨겼었다. 국내판은 크롤링이 화면 안에서
+                돌고 수집 결과가 매일 쌓이므로, 수집물을 사람이 한 번 훑는 자리가 꼭 있어야 한다. */}
+            {/* [수집함] 은 뺐다. 크롤링 결과가 바로 [검증 대기] 로 들어간다.
+                중간에 사람이 훑는 칸을 두어도 상호와 주소만 보고 규모를 판단할 수 없어서,
+                결국 손대지 않은 채 쌓이기만 한다. 그 판단은 AI 검증이 한다. */}
+            {/* [검증 대기] 도 뺐다. 크롤링 한 번이 발굴·메일추출·AI검증을 다 끝내고
+                [검증 완료] 또는 [검증 실패] 로 바로 떨어뜨린다. 기다리는 칸이 필요 없다. */}
+            {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
+            <button className="nav-item active" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
+              <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
+              <span className="nav-badge" data-nav-badge="verified"></span>
+            </button>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="발송 관리 — 보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다">
+              <span className="nav-icon">📨</span><span className="nav-label">발송 관리</span>
+              <span className="nav-badge" data-nav-badge="contacted"></span>
+            </button>
+            <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
+              <span className="nav-icon">💬</span><span className="nav-label">답장 받음</span>
+              <span className="nav-badge" data-nav-badge="replied"></span>
+            </button>
+            <button className="nav-item" data-view="pipeline-negotiating" type="button" title="대화 진행 중 — 조건/일정/가격 등 실제 협상 오가는 상태">
+              <span className="nav-icon">🤝</span><span className="nav-label">대화 진행 중</span>
+              <span className="nav-badge" data-nav-badge="negotiating"></span>
+            </button>
+            <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너십 확정 — 계약/합의 완료된 실 파트너 업체">
+              <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
+              <span className="nav-badge" data-nav-badge="partner"></span>
+            </button>
+
+            <div className="nav-divider"></div>
+
             {/* ══════════ 그룹 B · 메일함 (맨 위) ══════════
                 매일 가장 먼저 여는 곳이라 맨 위에 둔다 (대표님 요청 2026-09-15 · "메일함 상단 고정").
                 파이프라인이 '회사' 중심이라면 여기는 '메일' 중심.
@@ -45,7 +111,7 @@ export default function Home() {
                 · 최근 2개월
               </span>
             </div>
-            <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
+            <button className="nav-item" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
               <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
               <span className="nav-badge" data-nav-badge="inboxUnread"></span>
             </button>
@@ -71,72 +137,6 @@ export default function Home() {
 
             <div className="nav-divider"></div>
 
-            {/* ══════════ 그룹 A · 리드 파이프라인 (메일함 아래) ══════════
-                회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
-                예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
-                뒷부분이라 끊을 이유가 없었다. */}
-            <div className="nav-section-label">📊 리드 파이프라인</div>
-            {/* 가져오기(CSV 업로드)는 숨김 — 리드는 AI 서칭으로 들어오고,
-                클라이언트가 엑셀을 직접 올릴 일이 없다. 되살리려면 주석만 풀면 된다.
-            <button className="nav-item" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
-              <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
-            </button>
-            */}
-            {/* 국내판은 이 두 단계를 되살려 둔다.
-                해외판에서는 발굴을 개발자가 워크플로우로 돌려 결과를 바로 [검증 완료]에
-                넣었기 때문에 둘 다 늘 0건이라 숨겼었다. 국내판은 크롤링이 화면 안에서
-                돌고 수집 결과가 매일 쌓이므로, 수집물을 사람이 한 번 훑는 자리가 꼭 있어야 한다. */}
-            {/* [수집함] 은 뺐다. 크롤링 결과가 바로 [검증 대기] 로 들어간다.
-                중간에 사람이 훑는 칸을 두어도 상호와 주소만 보고 규모를 판단할 수 없어서,
-                결국 손대지 않은 채 쌓이기만 한다. 그 판단은 AI 검증이 한다. */}
-            {/* [검증 대기] 도 뺐다. 크롤링 한 번이 발굴·메일추출·AI검증을 다 끝내고
-                [검증 완료] 또는 [검증 실패] 로 바로 떨어뜨린다. 기다리는 칸이 필요 없다. */}
-            {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
-            <button className="nav-item" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
-              <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
-              <span className="nav-badge" data-nav-badge="verified"></span>
-            </button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button" title="발송 관리 — 보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다">
-              <span className="nav-icon">📨</span><span className="nav-label">발송 관리</span>
-              <span className="nav-badge" data-nav-badge="contacted"></span>
-            </button>
-            <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
-              <span className="nav-icon">💬</span><span className="nav-label">답장 받음</span>
-              <span className="nav-badge" data-nav-badge="replied"></span>
-            </button>
-            <button className="nav-item" data-view="pipeline-negotiating" type="button" title="대화 진행 중 — 조건/일정/가격 등 실제 협상 오가는 상태">
-              <span className="nav-icon">🤝</span><span className="nav-label">대화 진행 중</span>
-              <span className="nav-badge" data-nav-badge="negotiating"></span>
-            </button>
-            <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너십 확정 — 계약/합의 완료된 실 파트너 업체">
-              <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
-              <span className="nav-badge" data-nav-badge="partner"></span>
-            </button>
-
-            <div className="nav-divider"></div>
-
-            {/* ══════════ 그룹 C · import 하여 올린 데이터 ══════════
-                엑셀로 직접 올린 데이터는 AI 가 발굴한 리드와 성격이 다르다.
-                출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
-                다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
-                보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
-            {/* ══════════ 그룹 C · 키워드 발굴 (국내판 전용) ══════════
-                해외판에는 없던 자리다. 해외 바이어는 명단을 엑셀로 받아 올렸지만,
-                국내 B2B 는 네이버 검색으로 직접 캐내야 한다. 캐는 일(키워드·지역)과
-                캔 것을 보는 일(수집함)이 다르므로 메뉴를 나눴다. */}
-            <div className="nav-section-label">🧲 키워드 발굴</div>
-            <button className="nav-item" data-view="tool-crawl" type="button" title="크롤링 실행 — 카테고리·지역·키워드를 골라 네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다">
-              <span className="nav-icon">🔎</span><span className="nav-label">크롤링 실행</span>
-            </button>
-            <button className="nav-item" data-view="tool-keywords" type="button" title="키워드 관리 — 카테고리별 검색 키워드를 추가·수정합니다. 새 키워드를 넣어야 새 업체가 쌓입니다">
-              <span className="nav-icon">🏷</span><span className="nav-label">키워드 관리</span>
-            </button>
-            <button className="nav-item" data-view="tool-categories" type="button" title="카테고리 현황 — 5개 타깃(공공·기업·병의원·리조트·스포츠)별 수집·검증·발송 집계">
-              <span className="nav-icon">📊</span><span className="nav-label">카테고리 현황</span>
-            </button>
-
-            <div className="nav-divider"></div>
-
             {/* [📥 직접 올린 업체] 그룹은 국내판에서 뺐다.
                 해외판은 바이어 명단을 엑셀로 받아 올리는 것이 주 경로라 이 그룹이
                 필요했지만, 국내는 업체가 전부 [🧲 키워드 발굴] 을 통해 들어온다.
@@ -149,15 +149,11 @@ export default function Home() {
 
             {/* ══════════ 그룹 D · 설정 · 도구 ══════════ */}
             <div className="nav-section-label">⚙ 설정 · 도구</div>
-            {/* 해외판에서는 이 둘을 숨겨 뒀다 — 거기는 IMAP 연결이 이미 끝나 있어서
-                다시 들어갈 일이 없는 화면이었기 때문이다. 국내판은 새 설치라
-                아직 아무것도 안 맞춰져 있다. 메일 계정을 붙이려면 이 화면이 있어야 한다. */}
-            <button className="nav-item" data-view="tool-mail-settings" type="button" title="메일 수신 설정 — 받는 메일함(IMAP) 연결·수집 폴더·광고 필터">
-              <span className="nav-icon">🔌</span><span className="nav-label">메일 수신 설정</span>
-            </button>
-            <button className="nav-item" data-view="tool-scheduled-mails" type="button" title="예약 발송 관리 — 대기중 예약 목록·취소·즉시발송·발송 여부 확인">
-              <span className="nav-icon">📅</span><span className="nav-label">예약 발송 관리</span>
-            </button>
+            {/* [🔌 메일 수신 설정]·[📅 예약 발송 관리] 는 뺐다.
+                수신 설정은 계정을 한 번 붙이고 나면 다시 들어갈 일이 없고,
+                예약 발송은 위 [📨 발송 관리] 안에 [예약 발송] 탭으로 이미 있다.
+                같은 것을 두 군데서 보게 하면 어느 쪽이 진짜인지 헷갈린다.
+                (화면과 API 는 그대로 살아 있어 data-view 만 되살리면 돌아온다) */}
             {/* 계정이 먼저다.
                 보내는 주소·서명이 정해져야 양식이 의미를 갖고, 대표 계정을 바꾸면
                 받은 메일함이 통째로 그 계정 기준으로 바뀐다. 순서가 곧 설정 순서다. */}
@@ -206,8 +202,9 @@ export default function Home() {
               <button id="importCsvBtn" className="button secondary" type="button">⬆ Import</button>
               <button id="verifyLeadsBtn" className="button secondary" type="button">🔍 검증</button>
               */}
-              <button id="exportCsvBtn" className="button secondary" type="button"
-                title="지금 보고 있는 화면을 엑셀(CSV)로 내려받습니다">⬇ 엑셀로 내려받기</button>
+              {/* [⬇ 엑셀로 내려받기] 는 뺐다. 업체 목록을 파일로 꺼내 쓸 일이 없다 —
+                  고르고 보내는 일이 전부 이 안에서 끝난다.
+                  (exportCsv() 는 그대로 살아 있어 이 버튼만 되살리면 돌아온다) */}
               <button id="themeToggleBtn" className="theme-toggle" type="button" title="다크/라이트 모드">🌙</button>
               <button id="settingsBtn" className="button secondary" type="button" style={{ display: 'none' }}>설정</button>
               <form action="/api/auth/logout" method="POST" style={{ display: 'inline' }}>
