@@ -147,3 +147,50 @@ export function aiCostKrw(inputTokens: number, outputTokens: number): number {
     (outputTokens / 1_000_000) * AI_PRICE.outputPerMTok;
   return Math.round(usd * AI_PRICE.usdToKrw);
 }
+
+/**
+ * 아이디 하나가 하루에 돌릴 수 있는 크롤링 횟수.
+ *
+ * 크롤링 한 번은 40분에서 세 시간이 걸리고 AI 비용도 든다. 여러 사람이 각자
+ * 돌리면 네이버 쿼터와 토큰이 하루치로 금방 빠지고, 같은 업체를 서로 다시
+ * 뒤지게 된다. 하루 몇 번이면 충분한 일이라 횟수로 막는다.
+ *
+ * '한 번'은 **버튼 한 번**이다. 카테고리를 다섯 개 골라 걸어도 1회로 센다
+ * (작업 문서는 다섯 개 생기지만 queueId 는 하나다).
+ */
+export const DAILY_CRAWL_LIMIT = 3;
+
+/** 오늘(KST) 시작 시각 — 자정에 횟수가 돌아온다 */
+function kstTodayStart(now: Date = new Date()): Date {
+  const kstMs = now.getTime() + 9 * 60 * 60 * 1000;
+  const kst = new Date(kstMs);
+  kst.setUTCHours(0, 0, 0, 0);
+  return new Date(kst.getTime() - 9 * 60 * 60 * 1000);
+}
+
+export interface CrawlQuota {
+  limit: number;
+  used: number;
+  left: number;
+  /** 언제 다시 채워지는가 (화면에 "내일 0시에 돌아옵니다" 로 쓴다) */
+  resetsAt: Date;
+}
+
+/** 이 아이디가 오늘 몇 번 돌렸는지 */
+export async function crawlQuotaFor(user: string): Promise<CrawlQuota> {
+  const since = kstTodayStart();
+  const rows = await CrawlJob.aggregate([
+    { $match: { createdBy: user, startedAt: { $gte: since } } },
+    // 버튼 한 번 = queueId 하나. 카테고리 수만큼 세면 5개 고른 사람이
+    // 한 번 눌렀는데 하루치를 다 쓴 것이 된다.
+    { $group: { _id: { $ifNull: ['$queueId', '$jobId'] } } },
+    { $count: 'n' },
+  ]);
+  const used = rows[0]?.n || 0;
+  return {
+    limit: DAILY_CRAWL_LIMIT,
+    used,
+    left: Math.max(0, DAILY_CRAWL_LIMIT - used),
+    resetsAt: new Date(since.getTime() + 24 * 60 * 60 * 1000),
+  };
+}

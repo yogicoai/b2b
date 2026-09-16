@@ -5,7 +5,7 @@ import { runCrawlJob, resolveKeywords } from '@/lib/crawler/run';
 import { naverHasCreds } from '@/lib/crawler/naver';
 import { isCategoryKey, getCategory } from '@/lib/domain/categories';
 import { REGIONS } from '@/lib/domain/regions';
-import { CrawlJob, aiCostKrw } from '@/models/CrawlJob';
+import { CrawlJob, aiCostKrw, crawlQuotaFor, DAILY_CRAWL_LIMIT } from '@/models/CrawlJob';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -19,7 +19,10 @@ export const maxDuration = 300;
  *
  * GET  /api/crawl?jobId=...   진행률
  * GET  /api/crawl?estimate=1&category=...&keywords=a,b   실행 전 예상치
- * POST /api/crawl             { category, keywords?, maxQueries? } → { jobId }
+ * POST /api/crawl             { categories[], keywords?, maxQueries? } → { jobId, queueId }
+ *
+ * 아이디 하나당 하루 DAILY_CRAWL_LIMIT 회까지. 버튼 한 번 = 1회다
+ * (카테고리를 다섯 개 걸어도 queueId 가 하나라 1회로 센다).
  */
 
 /** 한 검색 조합이 돌려주는 업체 수 (네이버 지역검색은 한 번에 최대 5) */
@@ -68,10 +71,14 @@ export async function GET(req: Request) {
     );
     const minutes = Math.ceil((found * SECONDS_PER_HOMEPAGE) / 60);
 
+    // 누르기 전에 오늘 몇 번 남았는지도 같이 알려준다
+    const quota = await crawlQuotaFor(user);
+
     return NextResponse.json({
       success: true,
       categories: perCategory,
       usingDefaults: typed.length === 0,
+      quota,
       regions: REGIONS.length,
       queries,
       found,
@@ -147,6 +154,18 @@ export async function POST(req: Request) {
 
   await dbConnect();
 
+  // 하루 실행 횟수. 한 번이 40분~3시간짜리라 여러 사람이 각자 돌리면
+  // 네이버 쿼터와 토큰이 금방 빠지고 같은 업체를 서로 다시 뒤지게 된다.
+  const quota = await crawlQuotaFor(user);
+  if (quota.left <= 0) {
+    return NextResponse.json({
+      success: false,
+      error: `오늘 크롤링 횟수를 다 쓰셨습니다 (${quota.used}/${quota.limit}회). `
+           + `내일 0시에 다시 채워집니다.`,
+      quota,
+    }, { status: 429 });
+  }
+
   // 이미 돌고 있거나 대기 중인 카테고리는 또 걸지 않는다.
   // 두 작업이 같은 업체를 동시에 집으면 중복 검사가 소용없어진다.
   const busy = await CrawlJob.find({
@@ -196,5 +215,7 @@ export async function POST(req: Request) {
     queueId,
     queued: jobs.length,
     skipped: [...busySet],
+    // 방금 쓴 것까지 반영해서 돌려준다 — 화면이 바로 남은 횟수를 갱신한다
+    quota: { ...quota, used: quota.used + 1, left: quota.left - 1 },
   });
 }

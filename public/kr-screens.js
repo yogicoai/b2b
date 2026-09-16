@@ -161,6 +161,17 @@ async function renderCrawlPage() {
   krResumeRunningJob();
 }
 
+/** 남은 횟수가 0이면 시작 버튼을 막는다 — 눌러 보고 거절당하는 것보다 낫다 */
+function krApplyQuotaToButton(quota) {
+  const btn = document.getElementById('krCrawlRun');
+  if (!btn || !quota) return;
+  const out = quota.left <= 0;
+  btn.disabled = out;
+  btn.style.opacity = out ? '.45' : '1';
+  btn.style.cursor = out ? 'not-allowed' : 'pointer';
+  btn.textContent = out ? '오늘 횟수 소진 (' + quota.limit + '/' + quota.limit + ')' : '확인하고 시작';
+}
+
 /** 실행 전 예상치 — 돈과 시간이 나가는 일이라 누르기 전에 보여준다 */
 async function krLoadEstimate() {
   const box = document.getElementById('krCrawlEstimate');
@@ -202,9 +213,22 @@ async function krLoadEstimate() {
     row('메일 확보 예상', '약 ' + e.withEmail.toLocaleString() + '곳', '나머지는 자동 제외') +
     row('AI 검증', '약 ' + e.aiCount.toLocaleString() + '건', '≈ ' + e.costKrw.toLocaleString() + '원') +
     row('걸리는 시간', '약 ' + e.minutes + '분') +
+    (e.quota
+      ? '<div style="display:flex;justify-content:space-between;align-items:baseline;' +
+        'margin-top:8px;padding-top:8px;border-top:1px solid var(--border-subtle, var(--border-default))">' +
+        '<span style="font-size:12px;color:var(--text-secondary)">오늘 남은 실행</span>' +
+        '<span style="font-size:13px;font-weight:800;color:' +
+        (e.quota.left > 0 ? 'var(--brand-text,#1f6b8c)' : '#b91c1c') + '">' +
+        e.quota.left + ' / ' + e.quota.limit + '회</span></div>'
+      : '') +
     '<div style="font-size:10.5px;color:var(--text-quaternary);margin-top:7px;line-height:1.5">' +
-    escapeHtml(e.basis) + '. 실제 값은 첫 크롤 뒤 정확해집니다.</div>' +
-    '</div>';
+    escapeHtml(e.basis) + '. 실제 값은 첫 크롤 뒤 정확해집니다.' +
+    (e.quota && e.quota.left <= 0
+      ? '<br><b style="color:#b91c1c">오늘 횟수를 다 쓰셨습니다 — 내일 0시에 채워집니다.</b>'
+      : '') +
+    '</div></div>';
+
+  krApplyQuotaToButton(e.quota);
 }
 
 async function krStartCrawl() {
@@ -234,9 +258,11 @@ async function krStartCrawl() {
 
   if (!res || !res.success) {
     alert((res && res.error) || '시작하지 못했습니다.');
+    if (res && res.quota) krApplyQuotaToButton(res.quota);
     if (res && res.jobId) { _crawlJobId = res.jobId; krPollCrawl(); }
     return;
   }
+  if (res.quota) krApplyQuotaToButton(res.quota);
   _crawlJobId = res.jobId;
   _crawlNavigated = false;
   krPollCrawl();
