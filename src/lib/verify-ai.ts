@@ -18,8 +18,18 @@ const MODEL = 'claude-haiku-4-5';
 export interface AIVerdict {
   verdict: 'target-fit' | 'maybe' | 'not-fit';
   confidence: 'high' | 'medium' | 'low';
+  /**
+   * 0~100 점.
+   *
+   * 판정 세 갈래만으로는 224곳을 어디부터 보낼지 정할 수 없다. 한 번에 다 못 보내고
+   * (계정이 잠긴다) 나눠 보내야 하므로, 좋은 곳이 먼저 나가야 실익이 있다.
+   * 구 시스템도 같은 이유로 점수를 쓰고 있었다 (한화호텔앤드리조트 95점).
+   */
+  score: number;
   reasoning: string;          // 한국어 1~2문장
   signals: string[];          // 판단 근거 키워드/단서
+  /** 이번 호출이 쓴 토큰 — 화면에 실제 비용을 사실대로 보여주려고 같이 돌려준다 */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface LeadContext {
@@ -68,6 +78,14 @@ confidence:
 - medium : 신호는 있으나 단정하기 어렵다
 - low    : 정보가 빈약해 추측에 가깝다
 
+score 는 0~100 으로, **한 번에 몇 개가 들어갈 곳인가**를 그대로 반영한다.
+  90~100 전국 체인·대학병원·대기업 본사·지자체 (한 번에 수십~수백 개)
+  70~89  단일 대형 시설 · 중견기업 사옥 · 종합병원
+  50~69  중형 시설. 규모를 단정하기 어려움
+  30~49  소형. 몇 개 사고 끝날 가능성
+  0~29   대상 아님
+판정(verdict)과 어긋나지 않게 쓴다 — not-fit 인데 80 점 같은 조합은 안 된다.
+
 reasoning 은 한국어 1~2문장으로, **왜 이 규모로 봤는지**를 먼저 쓴다.
 signals 는 판단 근거가 된 단어 2~5개 (상호의 법인격·지점 수·시설 종류 등).`;
 
@@ -85,6 +103,10 @@ const TOOL_SCHEMA = {
         type: 'string',
         enum: ['high', 'medium', 'low'],
       },
+      score: {
+        type: 'integer',
+        description: '0~100. 납품 규모가 클수록 높다. 어디부터 보낼지 정하는 데 쓴다.',
+      },
       reasoning: {
         type: 'string',
         description: '한국어 1~2문장으로 핵심 근거 설명',
@@ -95,7 +117,7 @@ const TOOL_SCHEMA = {
         description: '판단 근거가 된 키워드 또는 단서 2~5개',
       },
     },
-    required: ['verdict', 'confidence', 'reasoning', 'signals'],
+    required: ['verdict', 'confidence', 'score', 'reasoning', 'signals'],
     additionalProperties: false,
   },
   strict: true,
@@ -152,6 +174,11 @@ export async function verifyWithAI(lead: LeadContext): Promise<AIVerdict | null>
         return {
           verdict: out.verdict,
           confidence: out.confidence,
+          score: Math.max(0, Math.min(100, Number(out.score) || 0)),
+          usage: {
+            inputTokens: response.usage?.input_tokens || 0,
+            outputTokens: response.usage?.output_tokens || 0,
+          },
           reasoning: out.reasoning,
           signals: out.signals,
         };

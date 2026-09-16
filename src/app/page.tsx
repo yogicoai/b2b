@@ -86,14 +86,11 @@ export default function Home() {
                 해외판에서는 발굴을 개발자가 워크플로우로 돌려 결과를 바로 [검증 완료]에
                 넣었기 때문에 둘 다 늘 0건이라 숨겼었다. 국내판은 크롤링이 화면 안에서
                 돌고 수집 결과가 매일 쌓이므로, 수집물을 사람이 한 번 훑는 자리가 꼭 있어야 한다. */}
-            <button className="nav-item" data-view="pipeline-ai-searched" type="button" title="수집함 — 키워드 크롤링이 새로 찾아온 업체. 검토해서 검증 대기로 올리거나 제외합니다">
-              <span className="nav-icon">🧲</span><span className="nav-label">수집함</span>
-              <span className="nav-badge" data-nav-badge="ai-searched"></span>
-            </button>
-            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기 — 수집된 업체가 AI 1차 검증(규모·적합성)을 기다리는 상태">
-              <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
-              <span className="nav-badge" data-nav-badge="verifying"></span>
-            </button>
+            {/* [수집함] 은 뺐다. 크롤링 결과가 바로 [검증 대기] 로 들어간다.
+                중간에 사람이 훑는 칸을 두어도 상호와 주소만 보고 규모를 판단할 수 없어서,
+                결국 손대지 않은 채 쌓이기만 한다. 그 판단은 AI 검증이 한다. */}
+            {/* [검증 대기] 도 뺐다. 크롤링 한 번이 발굴·메일추출·AI검증을 다 끝내고
+                [검증 완료] 또는 [검증 실패] 로 바로 떨어뜨린다. 기다리는 칸이 필요 없다. */}
             {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
             <button className="nav-item" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
               <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
@@ -140,26 +137,15 @@ export default function Home() {
 
             <div className="nav-divider"></div>
 
-            <div className="nav-section-label">📥 직접 올린 업체</div>
-            <button className="nav-item" data-view="tool-legacy" type="button" title="올린 업체 목록 — 엑셀로 올린 업체. 올린 날짜별 폴더로 나뉘어 있습니다. 여기서 AI 검증과 직접 검토를 돌려 보낼 곳을 고릅니다">
-              {/* 배지를 달지 않는다. 여기 숫자는 stage 집계에 없는 값이라
-                  늘 0 으로 떴다 — 실제로는 1,900곳이 들어 있는데 0 이 붙어
-                  "비었나" 로 읽힌다. 숫자가 필요하면 화면 안에서 보여준다. */}
-              <span className="nav-icon">📚</span><span className="nav-label">올린 업체 목록</span>
-            </button>
-            <button className="nav-item" id="navImportCsv" data-view="tool-legacy-import" type="button" title="엑셀·CSV 올리기 — 업체 목록 파일을 올립니다. 올린 데이터는 위 [올린 업체 목록]에서 관리됩니다">
-              <span className="nav-icon">⬆</span><span className="nav-label">엑셀·CSV 올리기</span>
-            </button>
-            {/* [📋 올린 기록] 은 뺐다.
-                "언제 무엇을 올렸나" 는 [올린 업체 목록] 이 이미 올린 날짜별 폴더로
-                보여준다. 같은 것을 두 군데서 보게 하면 어느 쪽이 진짜인지 헷갈린다.
-                (renderImportHistoryPage 는 그대로 살아 있어 주석만 풀면 돌아온다)
-            <button className="nav-item" data-view="tool-import-history" type="button" title="올린 기록 — 언제 무엇을 올렸는지">
-              <span className="nav-icon">📋</span><span className="nav-label">올린 기록</span>
-            </button>
-            */}
+            {/* [📥 직접 올린 업체] 그룹은 국내판에서 뺐다.
+                해외판은 바이어 명단을 엑셀로 받아 올리는 것이 주 경로라 이 그룹이
+                필요했지만, 국내는 업체가 전부 [🧲 키워드 발굴] 을 통해 들어온다.
+                손으로 올리는 경로가 나란히 있으면 "이 업체는 어디로 들어온 건가"가
+                두 갈래가 되고, 그때마다 분류·검증 상태를 따로 챙겨야 한다.
 
-            <div className="nav-divider"></div>
+                화면과 API(tool-legacy · tool-legacy-import · api/leads/legacy ·
+                api/leads/import)는 지우지 않았다. 엑셀로 받은 명단을 한 번 올릴 일이
+                생기면 이 블록만 되살리면 된다. */}
 
             {/* ══════════ 그룹 D · 설정 · 도구 ══════════ */}
             <div className="nav-section-label">⚙ 설정 · 도구</div>

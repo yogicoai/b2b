@@ -431,8 +431,15 @@ export const MIN_MAILS_FOR_OWN_FOLDER = 5;
 export function groupNameFromDomain(domain: string): string {
   const parts = String(domain || '').toLowerCase().split('.').filter(Boolean);
   if (!parts.length) return '';
-  // co.kr / com.au 같은 2단계 지역 도메인을 감안해 뒤에서 찾는다
-  const SECOND = new Set(['co', 'com', 'net', 'org', 'or', 'go', 'ac', 'gov', 'edu']);
+  // co.kr / com.au 같은 2단계 도메인을 감안해 뒤에서 찾는다.
+  // 지역명 SLD 도 같이 넣는다 — amc.seoul.kr 이 "Seoul"(서울아산병원인데!) 로
+  // 잡히던 문제가 여기서 나왔다. 실제 회사를 가리키는 조각은 그 왼쪽이다.
+  const SECOND = new Set([
+    'co', 'com', 'net', 'org', 'or', 'go', 'ac', 'gov', 'edu', 'ne', 'pe', 're', 'sc', 'hs', 'ms', 'es',
+    'seoul', 'busan', 'daegu', 'incheon', 'gwangju', 'daejeon', 'ulsan', 'sejong',
+    'gyeonggi', 'gangwon', 'chungbuk', 'chungnam', 'jeonbuk', 'jeonnam',
+    'gyeongbuk', 'gyeongnam', 'jeju',
+  ]);
   let i = parts.length - 2;
   if (i > 0 && SECOND.has(parts[i])) i -= 1;
   const core = parts[Math.max(0, i)] || parts[0];

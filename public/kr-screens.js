@@ -28,7 +28,7 @@ const KR_REGIONS = [
 
 const KR_STAGE_LABEL = {
   imported: '가져오기',
-  'ai-searched': '수집함',
+  'ai-searched': '수집함(미사용)',
   verifying: '검증 대기',
   verified: '검증 완료',
   queued: '발송 리스트',
@@ -64,124 +64,256 @@ const KR_INPUT_STYLE =
   'width:100%;padding:9px 11px;font-size:14px;border:1px solid var(--border-default);' +
   'border-radius:8px;background:var(--bg-surface);color:var(--text-primary)';
 
-/* ── 크롤링 실행 ─────────────────────────────────────────────────── */
+/* ── 크롤링 실행 ─────────────────────────────────────────────────
+
+   한 번 누르면 발굴 → 이메일 추출 → AI 검증까지 끝나고 [AI 검증 완료] 로 떨어진다.
+   중간에 사람이 할 판단이 없어서 단계를 쪼개지 않았다.
+
+   화면에서 신경 쓴 두 가지:
+   1. 누르기 전에 **얼마나 걸리고 얼마나 드는지** 보여준다. 15분짜리 일을
+      아무 예고 없이 시작시키면 안 된다.
+   2. 도는 동안 **업체 이름이 하나씩 쌓이는 게 보인다**. 숫자만 올라가면
+      멈춘 것처럼 보이고, 실제로 돌고 있는지 확인할 방법이 없다.
+   ───────────────────────────────────────────────────────────── */
+
+var _crawlJobId = null;      // 지금 보고 있는 작업
+var _crawlTimer = null;      // 진행률 폴링
+
+const KR_FIND_STATE = {
+  found:      { icon: '🔎', label: '수집',        color: 'var(--text-secondary)' },
+  'no-email': { icon: '✖',  label: '메일 없음',   color: '#9ca3af' },
+  verified:   { icon: '✅', label: '적합',        color: '#166534' },
+  rejected:   { icon: '🚫', label: '부적합',      color: '#b91c1c' },
+};
 
 async function renderCrawlPage() {
   const categoryOptions = KR_CATEGORIES
     .map((c) => '<option value="' + c.key + '">' + escapeHtml(c.label) + '</option>')
     .join('');
 
-  const regionChips = KR_REGIONS.map((r) =>
-    '<button type="button" class="kr-region-chip" data-region="' + r + '" ' +
-    'style="padding:5px 12px;font-size:12.5px;font-weight:600;border:1px solid var(--border-default);' +
-    'border-radius:999px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer">' + r + '</button>'
-  ).join('');
-
   els.content.innerHTML =
-    '<div style="max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">' +
+    '<div style="max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">' +
     krCard(
-      krSectionTitle('🔎 크롤링 실행',
-        '카테고리와 지역을 고르면 네이버에서 업체를 찾고, 홈페이지에 들어가 이메일을 뽑아옵니다. ' +
-        '수집된 곳은 <b>수집함</b>으로 들어가며, 규모가 맞는지는 그다음 단계(AI 검증)에서 가립니다.') +
+      krSectionTitle('🔎 크롤링 + AI 검증',
+        '전국에서 업체를 찾고, 홈페이지에서 메일 주소를 뽑고, 규모가 맞는지 AI가 가립니다. ' +
+        '끝나면 <b>AI 검증 완료</b>에 바로 들어갑니다 — 중간에 확인하실 것은 없습니다.') +
 
       krField('타깃 카테고리', '',
         '<select id="krCrawlCategory" style="' + KR_INPUT_STYLE + ';max-width:360px">' + categoryOptions + '</select>') +
 
-      krField('키워드', '비우면 등록된 키워드 전부',
+      krField('키워드', '비워 두면 이 카테고리에 등록된 키워드를 모두 씁니다',
         '<input id="krCrawlKeywords" type="text" autocomplete="off" ' +
-        'placeholder="예: 리조트, 호텔 키즈존 (쉼표로 구분)" style="' + KR_INPUT_STYLE + '">') +
+        'placeholder="비워 두세요 (직접 넣으려면 쉼표로 구분)" style="' + KR_INPUT_STYLE + '">') +
 
-      '<div style="margin-bottom:12px">' +
-      '<span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">' +
-      '지역 <span style="font-weight:400;color:var(--text-tertiary)">· 아무것도 안 고르면 전국</span></span>' +
-      '<div id="krRegionChips" style="display:flex;flex-wrap:wrap;gap:6px">' + regionChips + '</div></div>' +
+      // 지역은 고르게 하지 않는다 — 전국을 다 도는 것이 기본이고,
+      // 선택지를 두면 매번 같은 선택을 반복하게 만들 뿐이다.
+      '<div style="font-size:12px;color:var(--text-tertiary);margin:-4px 0 14px">' +
+      '📍 지역은 <b>전국 17개 시·도</b> 전체를 돕니다.</div>' +
 
-      '<label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:var(--text-secondary)">' +
-      '<input id="krCrawlHomepage" type="checkbox" checked> 홈페이지까지 들어가서 이메일 찾기 ' +
-      '<span style="color:var(--text-tertiary)">(느립니다 · 업체당 수 초)</span></label>' +
+      '<div id="krCrawlEstimate" style="margin-bottom:14px"></div>' +
 
-      '<button id="krCrawlRun" class="button primary" style="padding:9px 18px;font-size:13.5px;font-weight:700">크롤링 시작</button>' +
+      '<button id="krCrawlRun" class="button primary" style="padding:10px 20px;font-size:14px;font-weight:700">' +
+      '확인하고 시작</button>' +
       '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px;line-height:1.6">' +
-      '이 화면은 <b>맛보기용</b>입니다 — 한 번에 최대 10개 조합(키워드 × 지역)만 돕니다. ' +
-      '전국 대량 수집은 터미널에서 <code>npm run crawl:all</code> 로 돌리세요.</div>'
+      '시작하면 <b>중간에 멈추지 않습니다</b>. 다른 화면을 보다 오셔도 계속 돌고 있고, ' +
+      '이 화면으로 돌아오면 진행 상황이 그대로 보입니다.</div>'
     ) +
-    '<div id="krCrawlResult"></div></div>';
+    '<div id="krCrawlProgress"></div></div>';
 
-  // 고른 지역 — 칩을 눌러 켜고 끈다
-  const picked = new Set();
-  els.content.querySelectorAll('.kr-region-chip').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const r = btn.dataset.region;
-      const on = picked.has(r);
-      if (on) picked.delete(r); else picked.add(r);
-      btn.style.background = on ? 'var(--bg-surface)' : '#3FA6D3';
-      btn.style.color = on ? 'var(--text-secondary)' : '#fff';
-      btn.style.borderColor = on ? 'var(--border-default)' : '#3FA6D3';
-    });
-  });
+  const catSel = document.getElementById('krCrawlCategory');
+  const kwInput = document.getElementById('krCrawlKeywords');
+  catSel.addEventListener('change', krLoadEstimate);
+  kwInput.addEventListener('change', krLoadEstimate);
+  document.getElementById('krCrawlRun').addEventListener('click', krStartCrawl);
 
-  const runBtn = document.getElementById('krCrawlRun');
-  if (runBtn) runBtn.addEventListener('click', () => krRunCrawl(picked));
+  krLoadEstimate();
+  krResumeRunningJob();
 }
 
-async function krRunCrawl(pickedRegions) {
+/** 실행 전 예상치 — 돈과 시간이 나가는 일이라 누르기 전에 보여준다 */
+async function krLoadEstimate() {
+  const box = document.getElementById('krCrawlEstimate');
+  if (!box) return;
+  const category = document.getElementById('krCrawlCategory').value;
+  const keywords = document.getElementById('krCrawlKeywords').value.trim();
+
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">예상치 계산 중...</div>';
+
+  const q = '/api/crawl?estimate=1&category=' + encodeURIComponent(category) +
+    (keywords ? '&keywords=' + encodeURIComponent(keywords) : '');
+  const e = await safeJsonFetch(q);
+  if (!e || !e.success) { box.innerHTML = ''; return; }
+
+  const row = (label, value, hint) =>
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">' +
+    '<span style="font-size:12px;color:var(--text-secondary)">' + label + '</span>' +
+    '<span style="font-size:13px;font-weight:700;color:var(--text-primary)">' + value +
+    (hint ? ' <span style="font-weight:400;font-size:11px;color:var(--text-tertiary)">' + hint + '</span>' : '') +
+    '</span></div>';
+
+  box.innerHTML =
+    '<div style="padding:13px 15px;background:var(--bg-surface-alt, var(--bg-surface));' +
+    'border:1px solid var(--border-default);border-radius:10px">' +
+    '<div style="font-size:11.5px;font-weight:800;color:var(--text-secondary);margin-bottom:6px">' +
+    '실행하면 이렇게 됩니다' +
+    (e.usingDefaults
+      ? ' <span style="font-weight:400;color:var(--text-tertiary)">· 등록된 키워드 ' + e.keywords.length + '개 사용</span>'
+      : '') +
+    '</div>' +
+    row('검색', e.queries.toLocaleString() + '회', '키워드 ' + e.keywords.length + '개 × 전국 ' + e.regions + '개') +
+    row('발견 예상', '약 ' + e.found.toLocaleString() + '곳') +
+    row('메일 확보 예상', '약 ' + e.withEmail.toLocaleString() + '곳', '나머지는 자동 제외') +
+    row('AI 검증', '약 ' + e.aiCount.toLocaleString() + '건', '≈ ' + e.costKrw.toLocaleString() + '원') +
+    row('걸리는 시간', '약 ' + e.minutes + '분') +
+    '<div style="font-size:10.5px;color:var(--text-quaternary);margin-top:7px;line-height:1.5">' +
+    escapeHtml(e.basis) + '. 실제 값은 첫 크롤 뒤 정확해집니다.</div>' +
+    '</div>';
+}
+
+async function krStartCrawl() {
   const category = document.getElementById('krCrawlCategory').value;
   const keywords = document.getElementById('krCrawlKeywords').value
     .split(',').map((s) => s.trim()).filter(Boolean);
-  const withHomepage = document.getElementById('krCrawlHomepage').checked;
-  const box = document.getElementById('krCrawlResult');
+  const label = (KR_CATEGORIES.find((c) => c.key === category) || {}).label || category;
 
-  showGlobalBlocker('네이버에서 업체를 찾는 중... (홈페이지까지 보면 몇 분 걸립니다)');
-  try {
-    const res = await safeJsonFetch('/api/crawl', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        category,
-        keywords,
-        regions: Array.from(pickedRegions),
-        withHomepage,
-        maxQueries: 10,
-      }),
-    });
+  if (!confirm(
+    '[' + label + '] 크롤링을 시작합니다.\n\n' +
+    '전국 17개 시·도를 돌면서 업체를 찾고, 메일 주소를 뽑고, AI가 규모를 가립니다.\n' +
+    '시작하면 중간에 멈추지 않습니다.\n\n진행할까요?'
+  )) return;
 
-    if (!res || !res.success) {
-      box.innerHTML = krCard(
-        '<div style="color:#c0392b;font-size:13.5px;font-weight:700">크롤링 실패</div>' +
-        '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">' +
-        escapeHtml((res && res.error) || '알 수 없는 오류') + '</div>');
-      return;
-    }
+  const btn = document.getElementById('krCrawlRun');
+  if (btn) { btn.disabled = true; btn.textContent = '시작하는 중...'; }
 
-    const stat = (label, n, hint) =>
-      '<div style="flex:1;min-width:92px">' +
-      '<div style="font-size:11px;font-weight:700;color:var(--text-tertiary)">' + label + '</div>' +
-      '<div style="font-size:22px;font-weight:800;color:var(--text-primary);margin-top:2px">' + n + '</div>' +
-      (hint ? '<div style="font-size:11px;color:var(--text-tertiary)">' + hint + '</div>' : '') +
-      '</div>';
+  const res = await safeJsonFetch('/api/crawl', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, keywords }),
+  });
 
-    const errorBlock = (res.errors && res.errors.length)
-      ? '<details style="margin-top:14px">' +
-        '<summary style="font-size:12.5px;font-weight:700;color:var(--text-secondary);cursor:pointer">' +
-        '건너뛴 항목 ' + res.errors.length + '건</summary>' +
-        '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;line-height:1.7;max-height:200px;overflow:auto">' +
-        res.errors.map((e) => escapeHtml(e)).join('<br>') + '</div></details>'
-      : '';
+  if (btn) { btn.disabled = false; btn.textContent = '확인하고 시작'; }
 
-    box.innerHTML = krCard(
-      krSectionTitle('수집 결과') +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
-      stat('검색 조합', res.queries) +
-      stat('찾은 곳', res.found) +
-      stat('신규 등록', res.inserted, '수집함으로 들어감') +
-      stat('이미 있던 곳', res.duplicate) +
-      stat('이메일 확보', res.withEmail) +
-      '</div>' + errorBlock +
-      '<div style="font-size:12px;color:var(--text-tertiary);margin-top:14px">' +
-      '새로 들어온 곳은 왼쪽 <b>🧲 수집함</b>에서 확인하세요.</div>');
-  } finally {
-    hideGlobalBlocker();
+  if (!res || !res.success) {
+    alert((res && res.error) || '시작하지 못했습니다.');
+    if (res && res.jobId) { _crawlJobId = res.jobId; krPollCrawl(); }
+    return;
   }
+  _crawlJobId = res.jobId;
+  krPollCrawl();
+}
+
+/** 화면을 다시 열었을 때 돌고 있던 작업을 되찾는다 */
+async function krResumeRunningJob() {
+  const res = await safeJsonFetch('/api/crawl');
+  if (!res || !res.success || !res.jobs) return;
+  const running = res.jobs.find((j) => j.status === 'running') || res.jobs[0];
+  if (!running) return;
+  _crawlJobId = running.jobId;
+  krPollCrawl();
+}
+
+function krStopCrawlPolling() {
+  if (_crawlTimer) { clearInterval(_crawlTimer); _crawlTimer = null; }
+}
+
+async function krPollCrawl() {
+  krStopCrawlPolling();
+  const tick = async () => {
+    if (state.view !== 'tool-crawl' || !_crawlJobId) { krStopCrawlPolling(); return; }
+    const res = await safeJsonFetch('/api/crawl?jobId=' + encodeURIComponent(_crawlJobId));
+    if (!res || !res.success) { krStopCrawlPolling(); return; }
+    krRenderCrawlProgress(res.job);
+    if (res.job.status !== 'running') krStopCrawlPolling();
+  };
+  await tick();
+  _crawlTimer = setInterval(tick, 2000);
+}
+
+function krRenderCrawlProgress(job) {
+  const box = document.getElementById('krCrawlProgress');
+  if (!box) return;
+
+  // 단계마다 "몇 중 몇"이 다르다. 지금 도는 단계의 것을 보여준다.
+  let done = 0, total = 0;
+  if (job.phase === '업체 찾는 중')      { done = job.queriesDone;  total = job.queriesTotal; }
+  else if (job.phase === '이메일 찾는 중') { done = job.homepageDone; total = job.homepageTotal; }
+  else if (job.phase === 'AI 검증 중')    { done = job.aiDone;       total = job.aiTotal; }
+  const pct = total ? Math.round((done / total) * 100) : (job.status === 'done' ? 100 : 0);
+
+  const running = job.status === 'running';
+  const tone = job.status === 'done' ? '#166534' : job.status === 'running' ? '#3FA6D3' : '#b91c1c';
+
+  const stat = (label, n, color) =>
+    '<div style="flex:1;min-width:84px">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--text-tertiary)">' + label + '</div>' +
+    '<div style="font-size:20px;font-weight:800;margin-top:1px;color:' + (color || 'var(--text-primary)') + '">' +
+    (n || 0).toLocaleString() + '</div></div>';
+
+  const feed = (job.recentFinds || []).map((f) => {
+    const st = KR_FIND_STATE[f.state] || KR_FIND_STATE.found;
+    return '<div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;' +
+      'border-bottom:1px solid var(--border-subtle, var(--border-default))">' +
+      '<span style="flex:none;font-size:12px">' + st.icon + '</span>' +
+      '<span style="flex:none;font-size:11px;font-weight:700;color:' + st.color + ';min-width:52px">' +
+      st.label + '</span>' +
+      '<span style="flex:1;font-size:12.5px;color:var(--text-primary);overflow:hidden;' +
+      'text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(f.company || '') + '</span>' +
+      (f.region ? '<span style="flex:none;font-size:11px;color:var(--text-tertiary)">' + escapeHtml(f.region) + '</span>' : '') +
+      (typeof f.score === 'number'
+        ? '<span style="flex:none;font-size:11px;font-weight:800;color:' + st.color + '">' + f.score + '점</span>'
+        : '') +
+      (f.email ? '<span style="flex:none;font-size:10.5px;font-family:monospace;color:var(--text-tertiary);' +
+        'max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(f.email) + '</span>' : '') +
+      '</div>';
+  }).join('');
+
+  box.innerHTML = krCard(
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">' +
+    '<div style="font-size:14px;font-weight:800;color:' + tone + '">' +
+    (running ? '⏳ ' : job.status === 'done' ? '✅ ' : '⚠️ ') + escapeHtml(job.phase || '') +
+    '</div>' +
+    '<div style="font-size:11.5px;color:var(--text-tertiary)">' +
+    escapeHtml((KR_CATEGORIES.find((c) => c.key === job.category) || {}).label || job.category) +
+    (job.costKrw ? ' · AI ' + job.costKrw.toLocaleString() + '원 사용' : '') +
+    '</div></div>' +
+
+    '<div style="height:8px;background:var(--border-default);border-radius:99px;overflow:hidden">' +
+    '<div style="height:100%;width:' + pct + '%;background:' + tone + ';transition:width .4s"></div></div>' +
+    '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);margin-top:4px">' +
+    '<span>' + (total ? done.toLocaleString() + ' / ' + total.toLocaleString() : '') + '</span>' +
+    '<span style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+    escapeHtml(job.currentLabel || '') + '</span></div>' +
+
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px">' +
+    stat('발견', job.found) +
+    stat('메일 확보', job.withEmail) +
+    stat('메일 없음', job.noEmail, '#9ca3af') +
+    stat('적합', job.verified, '#166534') +
+    stat('부적합', job.failed, '#b91c1c') +
+    stat('이미 있던 곳', job.duplicate, 'var(--text-tertiary)') +
+    '</div>' +
+
+    (feed
+      ? '<div style="margin-top:16px">' +
+        '<div style="font-size:11.5px;font-weight:800;color:var(--text-secondary);margin-bottom:5px">' +
+        '실시간 수집' + (running ? ' · 계속 쌓입니다' : '') + '</div>' +
+        '<div style="max-height:320px;overflow-y:auto">' + feed + '</div></div>'
+      : '') +
+
+    ((job.problems || []).length
+      ? '<details style="margin-top:14px">' +
+        '<summary style="font-size:12px;font-weight:700;color:var(--text-secondary);cursor:pointer">' +
+        '건너뛴 항목 ' + job.problems.length + '건</summary>' +
+        '<div style="font-size:11px;color:var(--text-tertiary);margin-top:5px;line-height:1.7;max-height:160px;overflow:auto">' +
+        job.problems.map((e) => escapeHtml(e)).join('<br>') + '</div></details>'
+      : '') +
+
+    (job.status === 'done'
+      ? '<div style="margin-top:14px;padding:10px 12px;background:#dcfce7;border-radius:8px;font-size:12.5px;color:#166534">' +
+        '적합 <b>' + (job.verified || 0).toLocaleString() + '곳</b>이 [✅ AI 검증 완료]에 추가됐습니다. ' +
+        '거기서 보낼 곳을 골라 발송 리스트로 옮기세요.</div>'
+      : '')
+  );
 }
 
 /* ── 키워드 관리 ─────────────────────────────────────────────────── */
