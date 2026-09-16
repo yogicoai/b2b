@@ -34,33 +34,16 @@ export default function Home() {
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
-            {/* ══════════ 그룹 C · import 하여 올린 데이터 ══════════
-                엑셀로 직접 올린 데이터는 AI 가 발굴한 리드와 성격이 다르다.
-                출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
-                다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
-                보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
-            {/* ══════════ 그룹 C · 키워드 발굴 (국내판 전용) ══════════
-                해외판에는 없던 자리다. 해외 바이어는 명단을 엑셀로 받아 올렸지만,
-                국내 B2B 는 네이버 검색으로 직접 캐내야 한다. 캐는 일(키워드·지역)과
-                캔 것을 보는 일(수집함)이 다르므로 메뉴를 나눴다. */}
-            <div className="nav-section-label">🧲 키워드 발굴</div>
-            <button className="nav-item" data-view="tool-crawl" type="button" title="크롤링 실행 — 카테고리·지역·키워드를 골라 네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다">
-              <span className="nav-icon">🔎</span><span className="nav-label">크롤링 실행</span>
-            </button>
-            <button className="nav-item" data-view="tool-keywords" type="button" title="키워드 관리 — 카테고리별 검색 키워드를 추가·수정합니다. 새 키워드를 넣어야 새 업체가 쌓입니다">
-              <span className="nav-icon">🏷</span><span className="nav-label">키워드 관리</span>
-            </button>
-            <button className="nav-item" data-view="tool-categories" type="button" title="카테고리 현황 — 5개 타깃(공공·기업·병의원·리조트·스포츠)별 수집·검증·발송 집계">
-              <span className="nav-icon">📊</span><span className="nav-label">카테고리 현황</span>
-            </button>
-
-            <div className="nav-divider"></div>
-
             {/* ══════════ 그룹 A · 리드 파이프라인 (메일함 아래) ══════════
                 회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
                 예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
                 뒷부분이라 끊을 이유가 없었다. */}
             <div className="nav-section-label">📊 리드 파이프라인</div>
+            {/* 크롤링이 이 파이프라인의 입구다. 따로 그룹을 두면 "발굴"과 "파이프라인"이
+                다른 일처럼 보이는데, 실제로는 여기서 캔 것이 바로 아래 칸으로 떨어진다. */}
+            <button className="nav-item" data-view="tool-crawl" type="button" title="크롤링 실행 — 카테고리·지역·키워드를 골라 네이버에서 업체를 찾고 홈페이지에서 이메일을 뽑아옵니다">
+              <span className="nav-icon">🔎</span><span className="nav-label">크롤링 실행</span>
+            </button>
             {/* 가져오기(CSV 업로드)는 숨김 — 리드는 AI 서칭으로 들어오고,
                 클라이언트가 엑셀을 직접 올릴 일이 없다. 되살리려면 주석만 풀면 된다.
             <button className="nav-item" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
