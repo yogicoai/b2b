@@ -95,6 +95,13 @@ export async function learnSenderGroups(accountIds?: string[] | null): Promise<L
   for (const r of rows) {
     const { addr, group } = r._id;
     if (!addr || !group) continue;
+    // 모아두기 칸(· 사내 · 기타 · 광고·자동발송)은 배우지 않는다.
+    //
+    // 이것들은 사람이 정한 분류가 아니라 **프로그램이 만든 칸**이다. 배우면
+    // 자기가 내린 결정을 다시 근거로 삼는 순환이 생긴다 — 한 번 '· 기타' 로
+    // 간 발신자는 나중에 진짜 거래처가 되어도 계속 기타로 돌아갔다
+    // (파란관세사·29CM·카카오가 실제로 거기 묻혀 있었다).
+    if (group.startsWith('·')) continue;
     const domain = String(addr).split('@')[1] || '';
 
     const push = (map: Map<string, any[]>, key: string) => {
@@ -277,7 +284,14 @@ function sortByFolderOrder(folderOrder?: Map<string, number>) {
   };
 }
 
-const SPECIAL_VISIBLE_GROUPS = new Set(['\uAD11\uACE0\u00B7\uC790\uB3D9\uBC1C\uC1A1']);
+/**
+ * 이카운트 메일함에 실제 폴더가 없어도 화면에 띄우는 그룹.
+ *
+ * 앱이 만드는 모아두기 칸이라 IMAP 폴더 목록에는 없다.
+ * 예전에는 점 없는 옛 이름 하나만 적혀 있어서, 이름을 '· 광고·자동발송' 으로
+ * 통일한 뒤 그 폴더까지 화면에서 사라졌다.
+ */
+const SPECIAL_VISIBLE_GROUPS = new Set(['· 사내', '· 광고·자동발송', '· 기타']);
 
 export interface GroupRow {
   group: string;
@@ -342,8 +356,19 @@ export async function listGroups(
     { $sort: { n: -1 } },
   ]);
 
-  const isVisibleFolderGroup = (group: string, order?: Map<string, number>) =>
-    Boolean(order?.has(group) || SPECIAL_VISIBLE_GROUPS.has(group));
+  /**
+   * 화면에 띄울 폴더인가.
+   *
+   * 원래는 **이카운트 메일함에 실제로 있는 폴더**만 띄웠다. 거래처 분류가
+   * 메일함 폴더에서만 오던 시절의 규칙이다. 지금은 앱이 발신자·도메인·리드로
+   * 자동 배치하므로 메일함에 없는 이름이 대부분이고, 그 규칙 그대로 두면
+   * 자동 배치한 거래처 폴더가 **하나도 안 보인다** — 실제로 Besko 21통,
+   * 서울아산병원 11통이 DB 에는 있는데 화면에는 '전체' 만 떴다.
+   *
+   * 그래서 메일이 들어 있는 그룹은 전부 띄운다. 빈 폴더만 메일함 폴더 목록을
+   * 기준으로 남긴다(사람이 만들어 둔 빈 폴더는 계속 보여야 한다).
+   */
+  const isVisibleFolderGroup = (_group: string, _order?: Map<string, number>) => true;
 
   const merged = new Map<string, GroupRow>();
   for (const r of rows) {
