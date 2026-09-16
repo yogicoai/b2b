@@ -23,7 +23,7 @@ import { localAnalyze } from './local-analyze';
 import { matchLead, shouldMoveToReplied } from './match-lead';
 import { listMailAccounts, resolveAccount, toImapConfig } from './accounts';
 import { KEEP_DAYS } from './retention';
-import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, autoAssignGroup, getOwnDomains, type LearnedGroups } from './groups';
+import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, autoAssignGroup, getOwnDomains, GROUP_NOISE, type LearnedGroups } from './groups';
 import { syncSentReplies } from './reconcile';
 import { accountIdsForOwner } from './scope';
 
@@ -727,7 +727,15 @@ export async function runBackfill(opts: {
  * 지우지 않으므로 언제든 열어볼 수 있고, 대신 [미분류] 에는
  * 사람이 판단해야 할 메일만 남는다.
  */
-export const AD_FOLDER = '광고·자동발송';
+/**
+ * ⚠️ groups.ts 의 GROUP_NOISE 와 **같은 이름이어야 한다.**
+ *
+ * 예전에는 여기가 '광고·자동발송'(점 없음), groups.ts 가 '· 광고·자동발송'(점 있음)
+ * 이었다. 같은 뜻인데 이름이 둘이라 폴더가 갈라졌고 — 한 메일함에 84통과 13통으로
+ * 따로 쌓였다 — 점 없는 쪽은 '·' 로 시작하지 않아서 거래처 목록 맨 앞에 진짜
+ * 거래처인 양 떴다.
+ */
+export const AD_FOLDER = GROUP_NOISE;
 
 export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult> {
   const startedAt = new Date();
