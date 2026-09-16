@@ -46,7 +46,7 @@ async function main() {
     smtpPassEnc: encryptSecret(smtpPass),
     fromName: process.env.MAIL_FROM_NAME || '요기보',
     fromAddress,
-    senderCompany: process.env.COMPANY_NAME || '주식회사 요기보',
+    senderCompany: process.env.COMPANY_NAME || '주식회사 요기코퍼레이션',
     senderPhone: process.env.COMPANY_TEL || '',
     senderAddress: process.env.COMPANY_ADDR || '',
     isDefault: true,

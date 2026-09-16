@@ -15,10 +15,24 @@
 import crypto from 'crypto';
 
 const SECRET = process.env.UNSUB_SECRET || 'dev-unsub-secret';
+
+/**
+ * 수신거부 링크가 가리킬 주소.
+ *
+ * ⚠️ 실제 발송 전에 **반드시 바깥에서 열리는 주소**로 바꿔야 한다.
+ * localhost 로 나가면 받는 사람 브라우저에서 열리지 않고, 그건 수신거부 수단을
+ * 제공하지 않은 것과 같다 (정보통신망법 제50조 제4항).
+ * 개발 중에만 localhost 로 떨어진다.
+ */
 const BASE = process.env.APP_BASE_URL || 'http://localhost:5610';
 
+/** 바깥에서 열리는 주소인가 — 실발송 직전에 확인한다 */
+export function isPublicBaseUrl(): boolean {
+  return !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(BASE);
+}
+
 export const COMPANY = {
-  name: process.env.COMPANY_NAME || '주식회사 요기보',
+  name: process.env.COMPANY_NAME || '주식회사 요기코퍼레이션',
   addr: process.env.COMPANY_ADDR || '',
   tel: process.env.COMPANY_TEL || '',
 };

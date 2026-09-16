@@ -27,8 +27,8 @@ export const maxDuration = 60;
  * Body: {
  *   leadIds: string[], templateId: string, mailAccountId?: string,
  *   startAt?: string(ISO),      // 없으면 지금부터
- *   batchSize?: number,         // 한 묶음에 몇 곳 (기본 30)
- *   intervalMinutes?: number,   // 묶음 사이 간격 (기본 10)
+ *   batchSize?: number,         // 한 묶음에 몇 곳 (기본 30 · 최대 50)
+ *   intervalMinutes?: number,   // 묶음 사이 간격 (기본 30 · 최소 5)
  *   followUp?: boolean,         // 답 없으면 자동 재발송
  *   followUpDays?: number,      // 며칠 뒤 (기본 7)
  * }
@@ -53,8 +53,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'templateId 필수' }, { status: 400 });
   }
 
-  const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 100));
-  const intervalMinutes = Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 10));
+  // 상한을 200 → 50 으로 내렸다. 구 시스템에서 시간당 260통을 보내다 이카운트가
+  // 발신 주소를 끊었다(2026-09-16). 화면에서 실수로 크게 잡아도 그 근처까지 못 가게 막는다.
+  const batchSize = Math.max(1, Math.min(50, Number(body.batchSize) || 30));
+  const intervalMinutes = Math.max(5, Math.min(1440, Number(body.intervalMinutes) || 30));
   const followUp = body.followUp === true;
   const followUpDays = Math.max(1, Math.min(60, Number(body.followUpDays) || 7));
 

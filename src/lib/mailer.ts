@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { applyCompliance, isNightBlocked } from './email/compliance';
+import { applyCompliance, isNightBlocked, isPublicBaseUrl } from './email/compliance';
 
 /**
  * B2B 아웃바운드 이메일 전송기.
@@ -166,6 +166,17 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
         error: `야간 발송 차단 (현재 KST ${night.kstHour}시) — 광고성 정보는 21시~08시 전송이 제한됩니다.`,
       };
     }
+    // 진짜로 나가는 메일에 열리지 않는 수신거부 링크를 실을 수는 없다.
+    // DRY RUN 은 통과시킨다 — 개발 중에는 localhost 가 정상이다.
+    const reallySending = !(input.dryRun === true || process.env.MAIL_DRY_RUN === '1');
+    if (reallySending && !isPublicBaseUrl()) {
+      return {
+        ok: false,
+        error: 'APP_BASE_URL 이 localhost 입니다 — 수신거부 링크가 받는 사람 쪽에서 열리지 않습니다. '
+             + '배포 주소로 바꾼 뒤 보내세요 (정보통신망법 제50조).',
+      };
+    }
+
     const applied = applyCompliance(
       { subject: input.subject, html: input.html || '', to: input.to },
     );
