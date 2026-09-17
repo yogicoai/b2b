@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
 import { replyWindowFilter, replySince } from '@/lib/mail/period';
-import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
+import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,8 +43,8 @@ export async function GET(req: Request) {
 
     await dbConnect();
 
-    // 회사 목록은 모두가 함께 보지만, 카드에 붙는 메일 통수·답장 필요 수는
-    // 로그인한 아이디의 메일만 센다 — 남의 메일함 숫자가 섞이면 안 된다.
+    // 로그인 확인용. **숫자를 거르는 데는 쓰지 않는다** —
+    // 리드에 붙은 메일은 계정을 가리지 않는다 (lib/mail/scope.ts 상단 '예외' 참고).
     const scope = await getMailScope();
     if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
@@ -70,8 +70,13 @@ export async function GET(req: Request) {
 
     // 받은 메일 — 회사별 통수 · 마지막 수신 · 답해야 할 건수를 한 번에
     const inAgg: any[] = await InboundMail.aggregate([
-      // 내 계정 메일만 — 같은 회사라도 다른 아이디가 받은 편지는 세지 않는다
-      { $match: { leadId: { $in: ids }, trashedAt: null, ...mailFilter(scope) } },
+      // 계정을 가리지 않는다. 리드에 붙은 메일은 회사 기록이다.
+      //
+      // 여기에 mailFilter(scope) 가 걸려 있어서, 서울아산병원 11통이 전부 hjs
+      // 계정에 있다는 이유로 이사님·마스터 화면에는 "주고받은 메일 0통 ·
+      // 연락 기록 없음" 이 떴다. 정작 회사를 눌러 열면 대화 11건이 나왔다 —
+      // 같은 화면이 숫자와 내용에서 서로 다른 말을 했다.
+      { $match: { leadId: { $in: ids }, trashedAt: null } },
       {
         $group: {
           _id: '$leadId',
@@ -103,8 +108,8 @@ export async function GET(req: Request) {
           leadId: { $in: ids },
           ...NEEDS_REPLY,
           'analysis.deadline': { $ne: null, $gte: new Date() },
-          // 기한도 내 메일에서만 — 남의 메일 기한이 카드에 뜨면 내용이 새는 셈이다
-          ...mailFilter(scope),
+          // 기한도 계정을 가리지 않는다 — 위 inAgg 와 같은 기준이어야
+          // "통수는 11인데 기한 뱃지는 안 뜬다" 가 안 생긴다.
         },
       },
       { $group: { _id: '$leadId', nearest: { $min: '$analysis.deadline' } } },

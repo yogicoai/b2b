@@ -2,65 +2,22 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
-import { getMailScope, mailFilter, UNAUTHORIZED, type MailScope } from '@/lib/mail/scope';
+import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 
 /**
- * 리드의 답장 지표(inboundCount · lastInboundAt · needsReply · replyDeadline)를
- * 로그인한 아이디의 메일 기준으로 고친다 (아이디별 메일 분리, 2026-09-14).
+ * ⚠️ 여기에 있던 scopeMailStats 를 걷어냈다 (2026-09-17).
  *
- * ⚠️ src/app/api/leads/route.ts 의 scopeMailStats 와 **같은 함수**다 (복사본).
- *    목록과 상세가 다른 숫자를 보이면 안 되므로 한쪽을 고치면 반드시 다른 쪽도 고친다.
- *    (route 파일은 GET/PUT 같은 정해진 이름만 내보낼 수 있어 import 로 나눠 쓰지 못한다)
+ * 그 함수는 저장된 리드 지표(inboundCount·lastInboundAt·needsReply·replyDeadline)를
+ * **로그인한 사람의 메일함 것만으로 다시 깎아내렸다.** 그래서 마케팅팀원(hjs)이
+ * 받은 답장 11통이 이사님(jay)·마스터 화면에서는 0으로 보였다.
  *
- * 저장된 네 값은 수집할 때(lib/mail/ingest.ts) 어느 계정으로 받은 메일인지 가리지 않고 적힌다.
- * 남의 계정 메일이 실제로 붙어 있는 리드만 내 메일로 다시 센다. 나머지는 저장된 값이 곧 내 값이다.
+ * 리드에 붙은 메일은 개인 메일이 아니라 회사 기록이고, 파이프라인은 두 아이디가
+ * 함께 쓴다 (대표님 지시 2026-09-16, lib/mail/scope.ts 상단 '예외' 참고).
+ * 저장된 지표는 수집할 때(lib/mail/ingest.ts) 계정을 가리지 않고 적히므로
+ * **그대로 내보내는 것이 맞다.**
+ *
+ * leadId 가 없는 메일(개인 메일함)은 여전히 계정별로 갈린다 — 그건 안 건드렸다.
  */
-async function scopeMailStats(leads: any[], scope: MailScope): Promise<void> {
-  // 저장된 지표가 비어 있으면 드러날 것이 없다 — 대상만 추린다
-  const touched = leads.filter((l) =>
-    l && l.leadId && ((l.inboundCount || 0) > 0 || l.lastInboundAt || l.needsReply || l.replyDeadline));
-  if (!touched.length) return;
-
-  // 남의 계정(범위 밖) 메일이 하나라도 붙은 리드.
-  // 휴지통 것도 포함한다 — 저장된 lastInboundAt·needsReply 는 휴지통 여부와 무관하게 적힌다.
-  // 방향도 가리지 않는다 — 받은 메일만 보면 남의 메일 흔적이 붙은 리드를 놓쳐 저장값이 그대로 나간다.
-  // (다시 셀 때는 아래 $match 처럼 받은 메일만 센다)
-  const foreign: string[] = await InboundMail.distinct('leadId', {
-    leadId: { $in: touched.map((l) => l.leadId) },
-    accountId: { $nin: scope.accountIds },
-  });
-  if (!foreign.length) return;
-
-  const now = new Date();
-  const agg: any[] = await InboundMail.aggregate([
-    // ingest 가 inboundCount 를 셀 때와 같은 조건 + 내 계정 메일만
-    { $match: { leadId: { $in: foreign }, direction: 'in', trashedAt: null, ...mailFilter(scope) } },
-    { $sort: { date: -1 } },
-    {
-      $group: {
-        _id: '$leadId',
-        n: { $sum: 1 },
-        lastIn: { $first: '$date' },
-        // 저장값도 "마지막으로 받은 메일" 의 판정이다
-        lastNeedsReply: { $first: '$analysis.needsReply' },
-        // 아직 안 지난 기한 중 가장 이른 것 (Lead.replyDeadline 의 뜻). $min 은 null 을 건너뛴다
-        deadline: { $min: { $cond: [{ $gte: ['$analysis.deadline', now] }, '$analysis.deadline', null] } },
-      },
-    },
-  ]);
-  const by = new Map(agg.map((r) => [r._id, r]));
-  const foreignSet = new Set(foreign);
-
-  for (const l of touched) {
-    if (!foreignSet.has(l.leadId)) continue;
-    const r = by.get(l.leadId);
-    // 내 메일이 한 통도 없으면 답장이 없는 리드로 보인다
-    l.inboundCount = r?.n || 0;
-    l.lastInboundAt = r?.lastIn ? new Date(r.lastIn).toISOString() : '';
-    l.needsReply = Boolean(r?.lastNeedsReply);
-    l.replyDeadline = r?.deadline ? new Date(r.deadline).toISOString() : '';
-  }
-}
 
 /**
  * GET /api/leads/[id] — 리드 1건 전문.
@@ -85,7 +42,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!lead) {
       return NextResponse.json({ success: false, error: '리드를 찾을 수 없습니다' }, { status: 404 });
     }
-    await scopeMailStats([lead], scope);
     return NextResponse.json({ success: true, lead });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || '조회 실패' }, { status: 500 });

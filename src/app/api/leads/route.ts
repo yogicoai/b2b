@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
-import { getMailScope, mailFilter, UNAUTHORIZED, type MailScope } from '@/lib/mail/scope';
+import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 
 // 리스트 뷰에서 필요한 필드만 프로젝션 — 5MB+ 감소, 3~5x 응답 속도 개선
 // 상세 뷰는 개별 조회 (모달) 시 전체 필드 반환.
@@ -56,66 +56,19 @@ const LIST_PROJECTION = {
 } as const;
 
 /**
- * 목록의 답장 지표(inboundCount · lastInboundAt · needsReply · replyDeadline)를
- * 로그인한 아이디의 메일 기준으로 고친다 (아이디별 메일 분리, 2026-09-14).
+ * ⚠️ 여기에 있던 scopeMailStats 를 걷어냈다 (2026-09-17).
  *
- * 왜 필요한가:
- * 이 네 값은 수집할 때(lib/mail/ingest.ts) Lead 문서에 미리 적어 두는데, 그때는
- * 어느 계정으로 받은 메일인지 가리지 않고 센다. 리드 목록은 모두가 함께 보므로
- * 그대로 내려보내면 "💬 답장 3통 ⚠" 배지로 남의 메일함에 온 답장 수와
- * 회신 필요 여부가 보인다.
+ * 그 함수는 저장된 리드 지표(inboundCount·lastInboundAt·needsReply·replyDeadline)를
+ * **로그인한 사람의 메일함 것만으로 다시 깎아내렸다.** 그래서 마케팅팀원(hjs)이
+ * 받은 답장 11통이 이사님(jay)·마스터 화면에서는 0으로 보였다.
  *
- * 매번 전부 다시 세면 목록이 느려지므로, 남의 계정 메일이 실제로 붙어 있는
- * 리드만 골라 내 메일로 다시 센다. 나머지는 저장된 값이 곧 내 값이다.
+ * 리드에 붙은 메일은 개인 메일이 아니라 회사 기록이고, 파이프라인은 두 아이디가
+ * 함께 쓴다 (대표님 지시 2026-09-16, lib/mail/scope.ts 상단 '예외' 참고).
+ * 저장된 지표는 수집할 때(lib/mail/ingest.ts) 계정을 가리지 않고 적히므로
+ * **그대로 내보내는 것이 맞다.**
  *
- * ⚠️ 상세(src/app/api/leads/[id]/route.ts)에 같은 함수의 복사본이 있다 — 고치면 둘 다 고친다.
+ * leadId 가 없는 메일(개인 메일함)은 여전히 계정별로 갈린다 — 그건 안 건드렸다.
  */
-async function scopeMailStats(leads: any[], scope: MailScope): Promise<void> {
-  // 저장된 지표가 비어 있으면 드러날 것이 없다 — 대상만 추린다
-  const touched = leads.filter((l) =>
-    l && l.leadId && ((l.inboundCount || 0) > 0 || l.lastInboundAt || l.needsReply || l.replyDeadline));
-  if (!touched.length) return;
-
-  // 남의 계정(범위 밖) 메일이 하나라도 붙은 리드.
-  // 휴지통 것도 포함한다 — 저장된 lastInboundAt·needsReply 는 휴지통 여부와 무관하게 적힌다.
-  // 방향도 가리지 않는다 — 받은 메일만 보면 남의 메일 흔적이 붙은 리드를 놓쳐 저장값이 그대로 나간다.
-  // (다시 셀 때는 아래 $match 처럼 받은 메일만 센다)
-  const foreign: string[] = await InboundMail.distinct('leadId', {
-    leadId: { $in: touched.map((l) => l.leadId) },
-    accountId: { $nin: scope.accountIds },
-  });
-  if (!foreign.length) return;
-
-  const now = new Date();
-  const agg: any[] = await InboundMail.aggregate([
-    // ingest 가 inboundCount 를 셀 때와 같은 조건 + 내 계정 메일만
-    { $match: { leadId: { $in: foreign }, direction: 'in', trashedAt: null, ...mailFilter(scope) } },
-    { $sort: { date: -1 } },
-    {
-      $group: {
-        _id: '$leadId',
-        n: { $sum: 1 },
-        lastIn: { $first: '$date' },
-        // 저장값도 "마지막으로 받은 메일" 의 판정이다
-        lastNeedsReply: { $first: '$analysis.needsReply' },
-        // 아직 안 지난 기한 중 가장 이른 것 (Lead.replyDeadline 의 뜻). $min 은 null 을 건너뛴다
-        deadline: { $min: { $cond: [{ $gte: ['$analysis.deadline', now] }, '$analysis.deadline', null] } },
-      },
-    },
-  ]);
-  const by = new Map(agg.map((r) => [r._id, r]));
-  const foreignSet = new Set(foreign);
-
-  for (const l of touched) {
-    if (!foreignSet.has(l.leadId)) continue;
-    const r = by.get(l.leadId);
-    // 내 메일이 한 통도 없으면 답장이 없는 리드로 보인다
-    l.inboundCount = r?.n || 0;
-    l.lastInboundAt = r?.lastIn ? new Date(r.lastIn).toISOString() : '';
-    l.needsReply = Boolean(r?.lastNeedsReply);
-    l.replyDeadline = r?.deadline ? new Date(r.deadline).toISOString() : '';
-  }
-}
 
 export async function GET(req: Request) {
   try {
@@ -207,7 +160,7 @@ export async function GET(req: Request) {
 
     await dbConnect();
 
-    // 리드는 공용이지만 목록에 붙는 답장 지표는 내 메일 기준이어야 한다 (scopeMailStats)
+    // 로그인 확인용. 답장 지표는 계정을 가리지 않는다 (lib/mail/scope.ts '예외')
     const scope = await getMailScope();
     if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
@@ -222,7 +175,6 @@ export async function GET(req: Request) {
       // full 이어도 threadKeys 는 뺀다 — 남의 계정으로 오간 대화의 스레드 키까지 들어 있다
       query.select(full ? '-threadKeys' : LIST_PROJECTION);
       const leads = await query.exec();
-      await scopeMailStats(leads as any[], scope);
       const total = matchIds.length;
       return NextResponse.json({
         success: true,
@@ -281,7 +233,6 @@ export async function GET(req: Request) {
           ])
         : Promise.resolve([]),
     ]);
-    await scopeMailStats(leads as any[], scope);
 
     return NextResponse.json({
       success: true,
