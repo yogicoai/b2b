@@ -13,6 +13,21 @@ export const dynamic = 'force-dynamic';
 /** 이 실행에서 쓸 수 있는 시간 (maxDuration 300s 중 여유를 남긴다) */
 const RUN_BUDGET_MS = 270_000;
 
+/**
+ * 크론 **1회**에 내보낼 최대 통수.
+ *
+ * 시간 예산만으로 막으면 270초 ÷ 8초 = 33통이 나가고, 크론이 10분마다 돌면
+ * 시간당 198통이 된다. 이카운트가 발신을 막았을 때가 409통 / 94분 = 261통/시
+ * 였다 — 그 76% 수준이라 다시 막힐 자리다.
+ *
+ * 차단 후 정한 기준은 30통 / 30분(=60통/시)이었다. 10분 크론에 10통이면
+ * 정확히 그 속도다. 222통이면 3.7시간에 걸쳐 나간다.
+ *
+ * 급할 때만 환경변수 SCHEDULE_MAX_PER_RUN 으로 올린다 — 올리기 전에
+ * "이 주소가 하루에 몇 통까지 견디는가" 를 먼저 생각할 것.
+ */
+const MAX_PER_RUN = Math.max(1, Number(process.env.SCHEDULE_MAX_PER_RUN) || 10);
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -100,6 +115,8 @@ export async function GET(req: Request) {
 
     for (let i = 0; i < items.length; i++) {
       if (Date.now() - startedAt > RUN_BUDGET_MS) { stoppedFor = 'time-budget'; break; }
+      // 발신 속도 상한 — 남은 건 다음 크론이 이어서 집어간다 (status 는 pending 그대로)
+      if (i >= MAX_PER_RUN) { stoppedFor = 'rate-limit'; break; }
 
       // 첫 통은 바로, 그다음부터 간격을 둔다
       if (i > 0) {

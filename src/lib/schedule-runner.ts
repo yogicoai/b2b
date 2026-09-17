@@ -135,9 +135,22 @@ export async function processScheduleItem(doc: any) {
 
   doc.attempts += 1;
   if (result.ok) {
-    doc.status = 'sent';
-    doc.sentAt = now;
-    doc.lastError = '';
+    // DRY RUN 은 예약을 **소모하지 않는다**.
+    //
+    // 여기가 dryRun 을 안 보고 무조건 'sent' 로 바꿔서, 미리보기 한 번에 예약이
+    // 통째로 사라질 수 있었다. 아래 emailHistory 는 같은 이유로 이미
+    // dryRun 을 보고 있었는데(status: dryRun ? 'scheduled' : 'sent') 정작
+    // 예약 문서 자신은 빠져 있었다. 실제로 222건이 이 상태로 대기 중이었다.
+    //
+    // 나가지 않았으면 pending 그대로 둔다 — 다음 실행이 다시 집어간다.
+    doc.status = dryRun ? 'pending' : 'sent';
+    if (!dryRun) {
+      doc.sentAt = now;
+      doc.lastError = '';
+    }
+    // attempts 도 되돌린다. 안 그러면 미리보기를 몇 번 돌렸다는 이유로
+    // 재시도 한도에 걸려 진짜 발송이 막힌다.
+    if (dryRun) doc.attempts -= 1;
     await doc.save();
 
     const historyItem: any = {

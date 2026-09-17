@@ -13030,6 +13030,31 @@ function outboxPagerHtml(page, pages, total, from, shown) {
 }
 
 /** 📅 예약 발송 — 언제 · 어디로. 실패한 것도 사유와 함께 여기 남긴다 */
+/**
+ * 예약 시각이 지났는데 아직 안 나간 건 — 화면이 말해 준다.
+ *
+ * 9/17 에 15시 예약 222건이 17시까지 하나도 안 나갔는데 화면은 조용히
+ * "대기 중 222건" 만 띄우고 있었다. 예약을 건 사람 입장에서 '대기 중'은
+ * 곧 나갈 것처럼 읽힌다 — 이미 지났고 멈춰 있다는 걸 알 길이 없었다.
+ * (원인은 크론이 하루 한 번만 깨어난 것. vercel.json 참고)
+ */
+function outboxOverdueNoticeHtml(pending) {
+  const now = Date.now();
+  const late = (pending || []).filter((p) => {
+    const t = new Date(p.scheduledFor).getTime();
+    return Number.isFinite(t) && t <= now;
+  });
+  if (!late.length) return '';
+  const oldest = late.reduce((a, b) =>
+    (new Date(a.scheduledFor).getTime() <= new Date(b.scheduledFor).getTime() ? a : b));
+  const mins = Math.floor((now - new Date(oldest.scheduledFor).getTime()) / 60000);
+  const ago = mins >= 1440 ? `${Math.floor(mins / 1440)}일` : mins >= 60 ? `${Math.floor(mins / 60)}시간` : `${mins}분`;
+  return `<span style="background:#b91c1c;color:#fff;border-radius:6px;padding:3px 9px;font-weight:800;font-size:11.5px">
+      ⚠️ ${late.length.toLocaleString()}건은 시각이 지났는데 아직 안 나갔습니다 (가장 오래된 것 ${ago} 지남)
+    </span>
+    <span style="font-size:11px;color:#78350f">→ 오른쪽 [⏱ 지금 예약분 내보내기] 를 누르세요</span>`;
+}
+
 function outboxScheduledHtml(pending, failed, canceled) {
   const byDay = new Map();
   for (const it of pending) {
@@ -13061,6 +13086,7 @@ function outboxScheduledHtml(pending, failed, canceled) {
                   font-size:12.5px;color:#78350f;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <b>대기 중 ${pending.length.toLocaleString()}건</b>
         <span>${days.length}개 날짜</span>
+        ${outboxOverdueNoticeHtml(pending)}
         <!-- 예약을 실제로 내보내는 건 하루 한 번 도는 크론이다(Vercel 무료 플랜은
              하루 1회까지만 된다). 몇 분 뒤로 잡아놓고 나가는지 보고 싶을 때
              하루를 기다릴 수는 없으므로, 지금 돌려보는 버튼을 둔다.
