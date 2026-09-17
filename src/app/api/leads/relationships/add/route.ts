@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
-import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
+import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -108,13 +108,16 @@ export async function POST(req: Request) {
     });
 
     // 이미 받아둔 같은 주소의 메일을 이 회사에 붙인다 (아직 안 붙은 것만)
-    // 등록한 사람의 메일함에 있는 것만 붙인다 — 남의 메일을 건드리면 linkedMails 숫자로
-    // 다른 아이디가 이 주소와 주고받았는지가 드러난다.
+    //
+    // 계정을 가리지 않는다. 예전에는 등록한 사람 메일함 것만 붙였는데, 그러면
+    // 이사님이 거래처를 등록할 때 마케팅팀원이 받아 둔 그 회사 메일이 안 붙어
+    // "주고받은 메일 0통" 이 처음부터 다시 만들어진다. 붙이는 대상은 어차피
+    // **아직 어느 리드에도 안 붙은 메일**이고, 붙는 순간 회사 기록이 된다
+    // (lib/mail/scope.ts 상단 '예외' 참고).
     const linked = await InboundMail.updateMany(
       {
         'from.address': new RegExp(`^${Email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
         $or: [{ leadId: '' }, { leadId: { $exists: false } }, { leadId: null }],
-        ...mailFilter(scope),
       },
       // 'manual' — InboundMail 이 선언해 둔 값 중 하나. 새 값을 쓰면
       // 타입 선언과 어긋나 나중에 필터가 안 걸린다.
