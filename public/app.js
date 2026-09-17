@@ -3251,13 +3251,15 @@ function renderComposeModal() {
   const buildVars = (lead) => {
     const out = {};
     for (const v of state.email.variables) {
-      // fromLead 시뮬레이션 (client-side)
-      const val = lead[v.key] || '';
-      out[v.key] = val || v.example;
+      // 변수 key 와 Lead 필드 이름이 다르다 ({{companyName}} ← lead.Company).
+      // 예전에는 lead[v.key] 로 바로 찾다가 못 찾으면 v.example 로 떨어졌는데,
+      // 그 예시값이 진짜 회사 이름이라 엉뚱한 업체가 미리보기에 떴다.
+      out[v.key] = outboxLeadValue(lead, v.key);
     }
-    // 변수 목록을 아직 못 받았어도 회사명 등은 그 회사 값으로
-    for (const k of ['Company', 'Region', 'BuyerContact', 'Title', 'Email', 'Phone']) {
-      if (lead[k]) out[k] = lead[k];
+    // 변수 목록을 아직 못 받았어도 업체명 등은 그 업체 값으로
+    for (const k of Object.keys(OUTBOX_VAR_LEAD_FIELD)) {
+      const got = outboxLeadValue(lead, k);
+      if (got) out[k] = got;
     }
     out.SenderName = '요기보';
     out.SenderCompany = '요기보';
@@ -11743,17 +11745,48 @@ function renderUserGuidePage() {
 function outboxPreviewVars(lead) {
   const out = {};
   for (const v of (state.email.variables || [])) {
-    out[v.key] = (lead && lead[v.key]) || v.example || '';
+    // 고른 업체가 있으면 **그 업체 값만** 쓴다. 값이 비어도 예시로 채우지 않는다 —
+    // 예시값이 '서울아산병원' 같은 진짜 회사 이름이라, 한화호텔앤리조트를 골라 둔
+    // 미리보기에 서울아산병원이 떠서 "누구한테 가는 메일인지" 를 거꾸로 알려줬다.
+    // 업체를 아직 안 골랐을 때만 예시를 쓴다.
+    out[v.key] = lead ? outboxLeadValue(lead, v.key) : (v.example || '');
   }
-  // 변수 목록을 아직 못 받았어도 회사명 등은 그 회사 값으로 보이게 한다
-  for (const k of ['Company', 'Region', 'BuyerContact', 'Title', 'Email', 'Phone']) {
-    if (lead && lead[k]) out[k] = lead[k];
+  // 변수 목록을 아직 못 받았어도 업체명 등은 그 업체 값으로 보이게 한다
+  for (const k of Object.keys(OUTBOX_VAR_LEAD_FIELD)) {
+    const got = outboxLeadValue(lead, k);
+    if (got) out[k] = got;
   }
   out.SenderName = '요기보';
   out.SenderCompany = '요기보';
   out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
   return out;
 }
+/**
+ * 변수 key → Lead 문서의 필드 이름.
+ *
+ * 서버는 lib/template-vars.ts 의 fromLead 로 옮기는데 그건 **함수**라 화면까지
+ * 넘어오지 못한다 (state.email.variables 에는 key·label·example 만 온다).
+ * 그래서 같은 매핑을 여기 둔다 — 서버 TEMPLATE_VARS 의 fromLead 와 같아야 한다.
+ *
+ * 이게 없어서 {{companyName}} 이 lead.companyName 을 찾다 못 찾고 예시값
+ * '서울아산병원' 으로 떨어졌다. 한화호텔앤리조트를 골라 둔 미리보기에
+ * "서울아산병원 담당자님께" 가 떴다 (2026-09-17 제보).
+ */
+const OUTBOX_VAR_LEAD_FIELD = {
+  companyName: 'Company', Company: 'Company', Region: 'Region',
+  BuyerContact: 'BuyerContact', Title: 'Title', Email: 'Email', Phone: 'Phone',
+};
+
+/** 그 업체의 변수 값 하나 — 서버 fromLead 와 같은 폴백을 쓴다 */
+function outboxLeadValue(lead, key) {
+  const field = OUTBOX_VAR_LEAD_FIELD[key] || key;
+  const v = lead && lead[field];
+  const t = v == null ? '' : String(v).trim();
+  // 서버 template-vars.ts 는 BuyerContact 만 '담당자' 로 채운다 — 미리보기도 같아야 한다
+  if (!t && key === 'BuyerContact') return '담당자';
+  return t;
+}
+
 // 한글 마커 → 변수. 서버 lib/mailer.ts KO_ALIAS_TO_KEY 와 같아야 미리보기와 실제 발송이 같다.
 // (예전에는 {{Company}} 만 바꿔서, 양식에 [회사명] 을 쓰면 미리보기에 [회사명] 이 그대로 떠
 //  "어느 회사에 가는 메일인지" 헷갈렸다 — 대표님 피드백 2026-09-14)
@@ -11769,7 +11802,15 @@ const OUTBOX_KO_MARKERS = {
  */
 function outboxSubstitute(src, vars, opts = {}) {
   const text = String(src || '');
-  const re = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}|\[([^\[\]\n]+?)\]/g;
+
+  // 대괄호 마커 안쪽에서 { } 를 뺀다.
+  //
+  // 서버(lib/mailer.ts renderTemplate)는 {{변수}} 를 먼저 바꾸고 그다음 [한글마커]를
+  // 바꾸는 **2단계**다. 여기는 정규식 하나로 둘을 교대(|)로 보는데, 그러면 '[' 가
+  // 먼저 이겨서 "[{{companyName}}]" 전체를 한글마커로 삼킨다. 안의 {{companyName}} 은
+  // 볼 기회조차 없어서 제목이 "[{{companyName}}] 휴식 공간 제안" 그대로 보였다.
+  // { } 를 빼면 그 경우 대괄호 대안이 실패하고 안쪽 {{변수}} 가 잡혀 서버와 같아진다.
+  const re = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}|\[([^\[\]\n{}]+?)\]/g;
   let out = '';
   let last = 0;
   let m;
@@ -11778,11 +11819,18 @@ function outboxSubstitute(src, vars, opts = {}) {
     out += esc(text.slice(last, m.index));
     last = m.index + m[0].length;
     const key = m[1] || OUTBOX_KO_MARKERS[String(m[2] || '').trim()];
-    const val = key && vars[key] != null && vars[key] !== '' ? String(vars[key]) : null;
+    // 빈 값도 **바꾼 것으로 친다** — 서버 renderTemplate 이 그렇게 한다
+    // (vars[key] != null 이면 빈 문자열이라도 넣는다). 예전에는 여기서 빈 값을
+    // 거르고 {{Region}} 을 그대로 남겨서, 지역이 없는 업체는 미리보기에
+    // "{{Region}} 지역" 이 뜨는데 실제로는 " 지역" 이 나갔다.
+    const val = key && vars[key] != null ? String(vars[key]) : null;
     if (!key || val == null) { out += esc(m[0]); continue; }
-    out += opts.html
+    if (!opts.html) { out += val; continue; }
+    out += val
       ? `<span class="ob-var" title="회사마다 바뀌는 자리" style="background:#fef3c7;color:#92400e;border-radius:4px;padding:0 3px;font-weight:700">${escapeHtml(val)}</span>`
-      : val;
+      // 빈칸으로 나가는 자리 — 실제로도 아무것도 안 들어간다. 그걸 모르면
+      // "왜 여기가 어색하지" 하고 원인을 못 찾는다.
+      : `<span class="ob-var-empty" title="이 업체는 이 값이 비어 있어 빈칸으로 나갑니다" style="border:1px dashed #d4d4d8;color:#a1a1aa;border-radius:4px;padding:0 4px;font-size:11px">비어 있음</span>`;
   }
   return out + esc(text.slice(last));
 }
@@ -12754,7 +12802,7 @@ function outboxReadyHtml(ready, lock) {
   // 어떤 자리가 회사마다 달라지는지 — 이게 '묶음 발송'의 핵심이라 눈에 띄어야 한다
   // {{Company}} 와 [회사명] 둘 다 센다 — 양식은 대부분 [회사명] 으로 쓴다
   const usedVars = [...new Set(
-    (`${_outboxCompose.subject} ${_outboxCompose.body}`.match(/\{\{\s*[A-Za-z0-9_]+\s*\}\}|\[[^\[\]\n]+?\]/g) || [])
+    (`${_outboxCompose.subject} ${_outboxCompose.body}`.match(/\{\{\s*[A-Za-z0-9_]+\s*\}\}|\[[^\[\]\n{}]+?\]/g) || [])
       .filter((m) => m.startsWith('{{') || OUTBOX_KO_MARKERS[m.slice(1, -1).trim()])
       .map((m) => (m.startsWith('{{') ? m.replace(/\s/g, '') : m)),
   )];
