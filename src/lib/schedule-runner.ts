@@ -32,11 +32,20 @@ export async function processScheduleItem(doc: any) {
   // 발송 시점 재확인 — 예약 등록 후 시각까지 사이에 이미 여러 번 발송되었을 수 있음
   const guard = checkSendGuard({ emailHistory: lead.emailHistory, lastEmailSentAt: lead.lastEmailSentAt });
   if (!guard.ok) {
-    doc.status = 'failed';
+    // 가드는 **실패가 아니라 '아직'** 이다.
+    //
+    // 48시간 간격에 걸린 건은 시간이 지나면 보낼 수 있다. 그런데 여기서
+    // 'failed' 로 바꿔 버리면 다음 크론이 pending 만 집으므로 영영 안 나가고,
+    // 화면에서도 실패로 보여 사람이 다시 예약해야 한다.
+    // 실제로 이번 점검에서 3건이 이렇게 죽었다(되살렸다).
+    //
+    // 3회 한도 초과는 시간이 지나도 안 풀리므로 그건 실패로 닫는다.
+    const permanent = String(guard.reason || '').includes('횟수 초과');
+    doc.status = permanent ? 'failed' : 'pending';
     doc.lastError = `발송 가드: ${guard.reason}`;
-    doc.attempts += 1;
+    if (permanent) doc.attempts += 1;
     await doc.save();
-    return { ok: false, error: doc.lastError };
+    return { ok: false, error: doc.lastError, retryable: !permanent };
   }
 
   let smtpConfig: any = undefined;

@@ -13266,6 +13266,18 @@ function outboxSentHtml(sentSched, sentLeads) {
                         font-size:10.5px;font-weight:800;white-space:nowrap">${n}번째</span>`;
   };
   const fmtT = (v) => v ? new Date(v).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+  /**
+   * 며칠에 나갔는지 — 줄마다 붙인다.
+   *
+   * 날짜는 날짜별 묶음 머리에만 있었다. 목록이 길어지면 머리가 화면 밖으로
+   * 밀려서 "이게 언제 나간 거지" 를 알 수 없었다 (대표님 요청 2026-09-17).
+   */
+  const fmtD = (v) => {
+    if (!v) return '';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+  };
 
   const dayBlocks = days.map(([key, list]) => {
     list.sort((a, b) => Number(a.replied) - Number(b.replied) || b.count - a.count);
@@ -13290,8 +13302,10 @@ function outboxSentHtml(sentSched, sentLeads) {
                   </td>
                   <td style="padding:8px 10px;white-space:nowrap;color:var(--text-tertiary)">${escapeHtml(r.region)}</td>
                   <td style="padding:8px 10px;white-space:nowrap">${countBadge(r.count)}</td>
-                  <td style="padding:8px 10px;white-space:nowrap;color:var(--text-quaternary);font-size:11.5px">
-                    ${r.count > 1 && r.first ? `첫 발송 ${String(r.first).slice(5, 10).replace('-', '/')} · ` : ''}${fmtT(r.last)}
+                  <td style="padding:8px 10px;white-space:nowrap;font-size:11.5px">
+                    <b style="color:var(--text-secondary)">${escapeHtml(fmtD(r.last))}</b>
+                    <span style="color:var(--text-quaternary)">${fmtT(r.last)} 발송</span>
+                    ${r.count > 1 && r.first ? `<span style="color:var(--text-quaternary)"> · 첫 발송 ${String(r.first).slice(5, 10).replace('-', '/')}</span>` : ''}
                   </td>
                   <td style="padding:8px 15px;white-space:nowrap;text-align:right">
                     ${r.replied
