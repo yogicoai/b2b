@@ -12,6 +12,8 @@
  * (emailData/src/lib/mail/classify.js 이식)
  */
 
+import { stripQuoted } from './quoted';
+
 export type Classification =
   | 'b2b' | 'inquiry' | 'partner' | 'newsletter' | 'ad' | 'system' | 'unknown';
 
@@ -135,10 +137,29 @@ function headerValue(mail: ClassifyInput, key: string): string {
 /**
  * @returns null 이면 규칙으로 판정 불가 → AI 분석 대상
  */
+/** 제목이 답장·전달 꼴인가 — "RE:", "Re:", "FW:", "회신:", "답장:" … */
+const REPLY_PREFIX = /^\s*(re|fw|fwd|답장|회신|전달)\s*[:：]/i;
+
 export function ruleClassify(mail: ClassifyInput, settings: ClassifySettings = {}): RuleResult | null {
   const subject = mail.subject || '';
-  const body = (mail.raw?.text || '').slice(0, 8000);
-  const text = `${subject}\n${body}`;
+  const rawBody = (mail.raw?.text || '').slice(0, 8000);
+
+  // ── 우리 콜드메일에 온 답장인가 ──────────────────────────────
+  //
+  // 국내 콜드메일은 법(정보통신망법 제50조) 때문에 제목에 (광고)를 붙이고
+  // 본문 끝에 수신거부 안내를 싣는다. 상대가 답장하면 제목은
+  // "RE: (광고) …" 가 되고 본문 아래에는 우리 원문이 인용돼 따라온다.
+  //
+  // 예전에는 그 (광고)·수신거부 문구를 **상대가 보낸 광고의 증거**로 읽었다.
+  // 그래서 파라다이스시티가 "신규거래업체 신청서를 내 주시면 검토하겠다" 고
+  // 보낸 진짜 답장이 'ad' 로 찍혀 [답장받음] 에 못 올라갔다. 이대로면
+  // 콜드메일에 오는 **모든** 답장이 광고로 떨어진다.
+  //
+  // 답장이면 (1) 제목의 (광고) 표기는 우리 것이므로 강한 신호로 보지 않고
+  // (2) 광고 문구는 인용을 걷어낸 **상대가 새로 쓴 부분**에서만 센다.
+  const isReply = REPLY_PREFIX.test(subject) || Boolean(headerValue(mail, 'in-reply-to'));
+  const body = isReply ? stripQuoted(rawBody, { minKeep: 0, minIndex: 0 }) : rawBody;
+  const text = `${isReply ? subject.replace(LEGAL_AD_MARK, ' ') : subject}\n${body}`;
   const address = (mail.from?.address || '').toLowerCase();
   const senderName = mail.from?.name || '';
   const domain = address.split('@')[1] || '';
@@ -165,7 +186,7 @@ export function ruleClassify(mail: ClassifyInput, settings: ClassifySettings = {
 
   if (SYSTEM_SENDER.test(address) || headerValue(mail, 'auto-submitted')) {
     // 자동발송 주소이면서 광고 문구가 있으면 광고로 본다
-    const adish = LEGAL_AD_MARK.test(subject) || AD_PHRASES.some((r) => r.test(text));
+    const adish = (!isReply && LEGAL_AD_MARK.test(subject)) || AD_PHRASES.some((r) => r.test(text));
     if (!adish) {
       return {
         classification: 'system', classifiedBy: 'rule',
@@ -178,7 +199,8 @@ export function ruleClassify(mail: ClassifyInput, settings: ClassifySettings = {
 
   /* ── 2. 강한 신호 — 하나만 걸려도 광고 확정 ── */
 
-  if (LEGAL_AD_MARK.test(subject)) {
+  // 답장이면 제목의 (광고)는 우리가 붙인 것이다 — 위 isReply 주석 참고
+  if (!isReply && LEGAL_AD_MARK.test(subject)) {
     return {
       classification: 'ad', classifiedBy: 'rule',
       reason: '제목에 법정 광고 표기', confident: true, score: 99,

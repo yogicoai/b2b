@@ -13197,7 +13197,15 @@ function outboxSentHtml(sentSched, sentLeads) {
       count: hist.length || (l.lastEmailSentAt ? 1 : 0),
       first: sentAts[0] || l.lastEmailSentAt || '',
       last,
-      replied: !!l.inboundCount,
+      // [답장받음] 탭과 **같은 기준**을 쓴다 — stage 가 답장 이후 단계인가.
+      //
+      // 예전에는 inboundCount>0 이면 "✅ 답장 옴" 이라고 했다. 그런데 그 수에는
+      // 자동응답("접수번호 05456565")·반송까지 들어간다. 그래서 [발송 완료] 에는
+      // "답장 옴" 이 떠 있는데 [답장받음] 탭은 비어 있었다 (2026-09-21 제보).
+      // 진짜 답장은 받는 순간 리드가 replied 로 올라가 이 목록을 떠나므로,
+      // 여기 남은 채 받은 메일이 있다면 그건 자동응답·반송이다.
+      replied: ['replied', 'negotiating', 'partner'].includes(l.stage),
+      autoOnly: (l.inboundCount || 0) > 0 && !['replied', 'negotiating', 'partner'].includes(l.stage),
       // 마지막으로 보낸 뒤 며칠째 답이 없는지 — 팔로우업 판단의 실제 기준
       waited: last ? Math.max(0, Math.floor((Date.now() - new Date(last).getTime()) / 86400000)) : 0,
     };
@@ -13310,6 +13318,8 @@ function outboxSentHtml(sentSched, sentLeads) {
                   <td style="padding:8px 15px;white-space:nowrap;text-align:right">
                     ${r.replied
                       ? '<span style="color:#166534;font-weight:700">✅ 답장 옴</span>'
+                      : r.autoOnly
+                        ? `<span style="color:var(--text-tertiary)" title="자동응답·반송만 왔습니다. 사람이 쓴 답장이 아니라 [답장받음]에는 올라가지 않습니다.">📩 자동응답만 · 무응답 ${r.waited}일</span>`
                       : r.count >= 3
                         ? `<span style="color:#b91c1c;font-weight:700">무응답 ${r.waited}일 · 더 못 보냄</span>`
                         : `<span style="color:#b45309">무응답 ${r.waited}일</span>`}
