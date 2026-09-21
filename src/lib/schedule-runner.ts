@@ -4,7 +4,9 @@ import { Lead } from '@/models/Lead';
 import { sendMail, renderTemplate } from './mailer';
 import { buildVarsFromLead, buildSignatureBlock } from './template-vars';
 import { decryptSecret } from './crypto';
-import { checkSendGuard } from './send-limits';
+import { checkSendGuard, lastSuccessfulSendAt, MIN_INTERVAL_HOURS } from './send-limits';
+import { isNightBlocked } from './email/compliance';
+import { EmailSchedule } from '@/models/EmailSchedule';
 import { resolveOutreachAccount } from './mail/accounts';
 import { loadTemplateAttachments } from './mail/template-attachments';
 
@@ -29,6 +31,27 @@ export async function processScheduleItem(doc: any) {
     return { ok: false, error: 'lead not found' };
   }
 
+  // ── 보내면 안 되는 업체가 됐으면 닫는다 ─────────────────────────
+  // 예약을 건 뒤에 사람이 그 업체를 지우거나 [검증 실패]로 옮길 수 있다.
+  // 그 화면들은 pending 예약만 끊는데, 지금 막 발송기가 집은(processing)
+  // 건은 못 끊는다. 발송 직전에 한 번 더 본다.
+  // 팔로우업(2·3번째)은 그 사이 답장이 왔으면 보내지 않는다 — 답한 사람에게
+  // "혹시 보셨나요" 를 보내는 셈이다. 팔로우업 생성 때만 거르고 있었다.
+  const REPLIED = ['replied', 'negotiating', 'partner'];
+  const excluded = lead.deleted === true
+    ? '업체가 삭제됨'
+    : ['failed', 'archived'].includes(lead.stage)
+      ? `업체가 발송 제외 단계(${lead.stage})로 옮겨짐`
+      : (Number(doc.attemptNo) > 1 && REPLIED.includes(lead.stage))
+        ? '그 사이 답장이 와서 팔로우업을 보내지 않음'
+        : '';
+  if (excluded) {
+    doc.status = 'canceled';
+    doc.canceledReason = excluded;
+    await doc.save();
+    return { ok: false, error: excluded, attempted: false };
+  }
+
   // 발송 시점 재확인 — 예약 등록 후 시각까지 사이에 이미 여러 번 발송되었을 수 있음
   const guard = checkSendGuard({ emailHistory: lead.emailHistory, lastEmailSentAt: lead.lastEmailSentAt });
   if (!guard.ok) {
@@ -44,8 +67,14 @@ export async function processScheduleItem(doc: any) {
     doc.status = permanent ? 'failed' : 'pending';
     doc.lastError = `발송 가드: ${guard.reason}`;
     if (permanent) doc.attempts += 1;
+    // 보낼 수 있게 되는 시각으로 미룬다. 안 미루면 큐 맨 앞에 남아서 매 실행이
+    // 이 건을 먼저 집고, 거절하고, 자리(회당 10통)만 차지해 뒤의 정상 건이 굶는다.
+    if (!permanent) {
+      const last = lastSuccessfulSendAt(lead.emailHistory);
+      if (last) doc.scheduledFor = new Date(last.getTime() + MIN_INTERVAL_HOURS * 3600e3 + 60e3);
+    }
     await doc.save();
-    return { ok: false, error: doc.lastError, retryable: !permanent };
+    return { ok: false, error: doc.lastError, retryable: !permanent, attempted: false };
   }
 
   let smtpConfig: any = undefined;
@@ -116,6 +145,26 @@ export async function processScheduleItem(doc: any) {
   }
 
   const dryRun = process.env.MAIL_DRY_RUN === '1';
+
+  // 야간(21~08시 KST)이면 보내지 않고 대기로 돌려놓는다.
+  // 외부 크론이 밤새 10분마다 돈다. 예전엔 여기서 발송을 시도했다가 mailer 가
+  // '야간 발송 차단' 으로 돌려주면 아래 else 갈래가 **failed 로 영구 폐기**했다.
+  // 07:30 에 만든 팔로우업을 07:40 에 집어 매일 아침 죽이는 셈이었다.
+  if (!dryRun && isNightBlocked().blocked) {
+    doc.status = 'pending';
+    await doc.save();
+    return { ok: false, error: '야간 발송 제한 시간 — 08시 이후 발송', retryable: true, attempted: false };
+  }
+
+  // ── '보내기 시작함' 을 먼저 남긴다 ────────────────────────────
+  // SMTP 가 성공한 뒤 기록하기 전에 실행이 죽으면(DB 오류, 300초 강제 종료),
+  // 그 건은 processing 에 남는다. 나중에 그걸 pending 으로 되돌리면 **같은 곳에
+  // 또 보낸다** — 발송 이력이 안 남아 가드도 모른다. 이 표시가 있는 건은
+  // 절대 자동으로 되돌리지 않는다('발송 여부 불명' 으로 사람에게 넘긴다).
+  if (!dryRun) {
+    await EmailSchedule.updateOne({ _id: doc._id }, { $set: { sendStartedAt: new Date() } });
+  }
+
   let result: any;
   if (dryRun) {
     console.log(`[schedule:DRY_RUN] to=${doc.to} subject=${renderedSubject.slice(0, 60)}`);
@@ -162,6 +211,12 @@ export async function processScheduleItem(doc: any) {
     if (dryRun) doc.attempts -= 1;
     await doc.save();
 
+    // DRY RUN 은 리드에 **아무것도** 남기지 않는다.
+    // 예전엔 'scheduled' 이력과 lastEmailSentAt 을 남겼다. 그 lastEmailSentAt 을
+    // 48시간 가드가 '최근 발송' 으로 읽어서 9/18 에 한 번도 못 받은 10곳이
+    // 막혔다. /api/mail/send 는 이미 dryRun 이면 기록을 건너뛴다 — 같은 규칙이다.
+    if (dryRun) return { ok: true, messageId: result.messageId, dryRun: true, attempted: false };
+
     const historyItem: any = {
       subject: renderedSubject,
       body: renderedBody.slice(0, 500),
@@ -184,8 +239,18 @@ export async function processScheduleItem(doc: any) {
       { leadId: doc.leadId },
       { $push: { emailHistory: historyItem }, $set: setUpdate },
     );
-    return { ok: true, messageId: result.messageId, dryRun: !!result.dryRun };
+    return { ok: true, messageId: result.messageId, dryRun: !!result.dryRun, attempted: true };
   } else {
+    // 야간 차단은 실패가 아니라 '아직'이다 (위에서 먼저 거르지만, 발송 도중
+    // 21시를 넘긴 경우 mailer 가 거절한다). failed 로 닫으면 영영 안 나간다.
+    if (/야간 발송 차단/.test(String(result.error || ''))) {
+      doc.status = 'pending';
+      doc.lastError = String(result.error);
+      await EmailSchedule.updateOne({ _id: doc._id }, { $set: { sendStartedAt: null } });
+      doc.attempts -= 1;
+      await doc.save();
+      return { ok: false, error: result.error, retryable: true, attempted: false };
+    }
     doc.status = 'failed';
     doc.lastError = result.error || 'unknown';
     await doc.save();
@@ -205,6 +270,6 @@ export async function processScheduleItem(doc: any) {
         },
       },
     );
-    return { ok: false, error: result.error };
+    return { ok: false, error: result.error, attempted: true };
   }
 }

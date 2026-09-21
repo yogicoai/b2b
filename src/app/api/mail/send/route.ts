@@ -3,6 +3,7 @@ import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
+import { EmailSchedule } from '@/models/EmailSchedule';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from '@/lib/mailer';
@@ -186,7 +187,23 @@ export async function POST(req: Request) {
   let failed = 0;
   const historyOps: any[] = [];
 
+  // 지금 예약 발송기가 **보내는 중인**(processing) 업체는 건너뛴다.
+  // 발송 기록이 남기 전이라 가드가 모른다 — 여기서 또 보내면 같은 곳에 두 통이다.
+  // pending(아직 시각 전)은 막지 않는다. 사람이 일부러 먼저 보내는 경우가 있고,
+  // 그러면 그 예약은 발송 시각에 48시간 가드에 걸려 뒤로 미뤄진다.
+  const sending = new Set(
+    ((await EmailSchedule.find(
+      { leadId: { $in: leads.map((l) => l.leadId) }, status: 'processing' }, { leadId: 1 },
+    ).lean()) as any[]).map((x) => x.leadId),
+  );
+
   for (const lead of leads) {
+    if (sending.has(lead.leadId)) {
+      results.push({ leadId: lead.leadId, ok: false, error: '예약 발송이 지금 이 업체에 보내는 중입니다' });
+      failed++;
+      continue;
+    }
+
     // 이메일 없으면 스킵
     const to = (lead.Email || '').trim();
     if (!to || /^Not found/i.test(to) || !/@/.test(to)) {

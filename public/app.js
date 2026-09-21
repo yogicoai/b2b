@@ -11965,7 +11965,10 @@ async function renderOutboxPage() {
   ]);
 
   const all = (schedData && schedData.items) || [];
-  let pending    = all.filter((i) => i.status === 'pending');
+  _scheduleCron = (schedData && schedData.cron) || null;
+  // processing = 발송기가 선점해 지금 보내는 중. 몇 초 뒤 발송 완료로 넘어간다.
+  // 대기 목록에서 빼면 그 사이 회사가 [보낼 메일]에 다시 떠서 또 예약할 수 있다.
+  let pending    = all.filter((i) => i.status === 'pending' || i.status === 'processing');
   const sentSched = all.filter((i) => i.status === 'sent');
   const failed   = all.filter((i) => i.status === 'failed');
   const canceled = all.filter((i) => i.status === 'canceled');
@@ -12115,6 +12118,9 @@ async function renderOutboxPage() {
         (r.stoppedFor === 'daily-cap' ? '\n※ 하루 상한에 걸려 멈췄습니다.\n' : '') +
         (r.stoppedFor === 'time-budget' ? '\n※ 시간이 길어져 멈췄습니다. 다시 누르면 이어서 나갑니다.\n' : '') +
         (r.skipped === 'daily-cap' ? '\n※ 오늘 상한을 이미 채워 한 통도 나가지 않았습니다.\n' : '') +
+        (r.skipped === 'busy' ? '\n※ 자동 발송이 지금 돌고 있어 이번엔 건너뛰었습니다. 1~3분 뒤 [발송 완료]를 보세요.\n' : '') +
+        (r.skipped === 'night' || r.stoppedFor === 'night' ? '\n※ 야간(21~08시)이라 보내지 않았습니다. 08시 이후 자동으로 나갑니다.\n' : '') +
+        (r.stoppedFor === 'rate-limit' ? '\n※ 한 번에 10통까지만 보냅니다(발신 차단 방지). 남은 건은 10분마다 자동으로 이어서 나갑니다.\n' : '') +
         (ng.length ? `\n실패 사유\n${ng.slice(0, 5).map((x) => ' · ' + (x.error || '알 수 없음')).join('\n')}\n` : '') +
         `\n[✅ 발송 완료] 탭에서 확인하세요.`,
       );
@@ -13038,9 +13044,40 @@ function outboxPagerHtml(page, pages, total, from, shown) {
  * 곧 나갈 것처럼 읽힌다 — 이미 지났고 멈춰 있다는 걸 알 길이 없었다.
  * (원인은 크론이 하루 한 번만 깨어난 것. vercel.json 참고)
  */
+/** 예약 발송기 심장 박동 (/api/mail/schedule 응답의 cron) */
+let _scheduleCron = null;
+
+/**
+ * 외부 크론이 살아 있는가.
+ *
+ * 예약은 외부 크론(cron-job.org, 10분마다)이 내보낸다. 그게 조용히 멈추면
+ * (설정 실수·서비스 장애·실패가 쌓여 스스로 꺼짐) 예약이 쌓이기만 한다.
+ * 9/21 에 17:00 회차가 안 돌아 10건이 멈춰 있었는데 화면은 몰랐다.
+ *
+ * 크론은 밤에도 '야간이라 건너뜀' 으로 박동을 찍으므로, 25분(10분 × 2회 놓침 + 여유)
+ * 넘게 소식이 없으면 시간대와 상관없이 멈춘 것이다.
+ */
+function outboxCronHealthHtml() {
+  const hb = _scheduleCron;
+  if (!hb) return '';
+  const last = hb.lastCronRunAt ? new Date(hb.lastCronRunAt).getTime() : 0;
+  const mins = last ? Math.floor((Date.now() - last) / 60000) : null;
+  if (mins !== null && mins <= 25) return '';
+  const ago = mins === null ? '한 번도 안 돌았습니다'
+    : mins >= 1440 ? `${Math.floor(mins / 1440)}일째 안 돌고 있습니다`
+    : mins >= 60 ? `${Math.floor(mins / 60)}시간째 안 돌고 있습니다`
+    : `${mins}분째 안 돌고 있습니다`;
+  return `<div style="flex-basis:100%;padding:8px 11px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;
+                      color:#991b1b;font-size:12px;line-height:1.6">
+      <b>⏸ 자동 발송이 ${ago}.</b> 예약은 시각이 돼도 저절로 나가지 않습니다.
+      지금은 오른쪽 <b>[⏱ 지금 예약분 내보내기]</b>로 내보내고, 외부 크론(cron-job.org) 설정을 확인하세요.
+    </div>`;
+}
+
 function outboxOverdueNoticeHtml(pending) {
   const now = Date.now();
   const late = (pending || []).filter((p) => {
+    if (p.status === 'processing') return false;   // 지금 나가는 중 — 밀린 게 아니다
     const t = new Date(p.scheduledFor).getTime();
     return Number.isFinite(t) && t <= now;
   });
@@ -13087,6 +13124,7 @@ function outboxScheduledHtml(pending, failed, canceled) {
         <b>대기 중 ${pending.length.toLocaleString()}건</b>
         <span>${days.length}개 날짜</span>
         ${outboxOverdueNoticeHtml(pending)}
+        ${outboxCronHealthHtml()}
         <!-- 예약을 실제로 내보내는 건 하루 한 번 도는 크론이다(Vercel 무료 플랜은
              하루 1회까지만 된다). 몇 분 뒤로 잡아놓고 나가는지 보고 싶을 때
              하루를 기다릴 수는 없으므로, 지금 돌려보는 버튼을 둔다.

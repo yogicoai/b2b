@@ -3,6 +3,7 @@ import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
+import { readHeartbeat } from '@/lib/schedule-claim';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 import { Lead } from '@/models/Lead';
@@ -20,12 +21,13 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get('status') || 'pending';
+  // 기본은 '대기 + 보내는 중'. processing 은 몇 초짜리라 따로 부르면 목록에서 깜빡 사라진다.
+  const status = searchParams.get('status') || 'pending,processing';
   const limit = Math.min(500, parseInt(searchParams.get('limit') || '100', 10));
 
   await dbConnect();
   const filter: any = { createdBy: user };
-  if (status !== 'all') filter.status = status;
+  if (status !== 'all') filter.status = status.includes(',') ? { $in: status.split(',') } : status;
 
   const items = await EmailSchedule.find(filter).sort({ scheduledFor: 1 }).limit(limit).lean();
 
@@ -48,8 +50,11 @@ export async function GET(req: Request) {
       templateId: i.templateId,
       sentAt: i.sentAt,
       createdAt: i.createdAt,
+      canceledReason: i.canceledReason || '',
       lead: leadMap.get(i.leadId) || null,
     })),
+    // 예약 발송기 심장 박동 — 외부 크론이 조용히 멈추면 화면이 경고한다
+    cron: await readHeartbeat(),
   });
 }
 
@@ -95,8 +100,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: '이메일이 유효한 리드가 없습니다' }, { status: 400 });
   }
 
+  // 이미 예약이 걸려 있거나 지금 나가는 중인 곳은 빼고 건다.
+  //
+  // [보낼 메일] 캠페인과 팔로우업은 이 확인을 하는데 여기(메일 쓰기 → 예약)만
+  // 안 했다. 그래서 한 업체에 예약이 둘 쌓일 수 있었다 — 9/18 에 실패한 10곳을
+  // 마케터가 다시 예약해서 리드마다 두 개씩 쌓인 게 그 모양이다. 둘이면 하나 나간
+  // 뒤 48시간이 지나 **같은 광고가 한 번 더** 나간다.
+  const busy = await EmailSchedule.find(
+    { leadId: { $in: validLeads.map((l) => l.leadId) }, status: { $in: ['pending', 'processing'] } },
+    { leadId: 1 },
+  ).lean();
+  const busySet = new Set((busy as any[]).map((b) => b.leadId));
+  const skipped = validLeads.filter((l) => busySet.has(l.leadId)).map((l) => l.leadId);
+  const toSchedule = validLeads.filter((l) => !busySet.has(l.leadId));
+  if (toSchedule.length === 0) {
+    return NextResponse.json({
+      success: false,
+      error: `고른 ${validLeads.length}곳 모두 이미 예약이 걸려 있습니다 — [예약 발송] 에서 확인하세요`,
+      skipped,
+    }, { status: 409 });
+  }
+
   const batchId = `sched-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const docs = validLeads.map((l) => ({
+  const docs = toSchedule.map((l) => ({
     leadId: l.leadId,
     templateId,
     mailAccountId: String(outreach._id),
@@ -115,6 +141,8 @@ export async function POST(req: Request) {
     success: true,
     scheduled: created.length,
     skipped: leadIds.length - created.length,
+    // 그중 '이미 예약이 걸려 있어서' 뺀 곳 (나머지는 메일 주소가 없는 곳)
+    alreadyScheduled: skipped.length,
     batchId,
     scheduledFor: scheduledFor.toISOString(),
   });

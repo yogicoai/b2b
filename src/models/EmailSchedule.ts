@@ -10,7 +10,14 @@ export interface IEmailSchedule extends Document {
   mailAccountId?: string;      // 발송에 쓸 SMTP 계정 (없으면 env 기본)
   to: string;                  // 수신자 이메일
   scheduledFor: Date;          // 발송 예정 시각
-  status: 'pending' | 'sent' | 'failed' | 'canceled';
+  // 'processing' = 발송기가 **선점**해서 지금 보내는 중. 다른 발송기가 못 집는다.
+  // 외부 크론·Vercel 크론·화면 버튼이 동시에 돌아도 한 예약은 한 번만 나가게 하려는 것.
+  status: 'pending' | 'processing' | 'sent' | 'failed' | 'canceled';
+  claimedAt?: Date | null;     // 선점한 시각 — 오래 멈춰 있으면 죽은 실행으로 보고 풀어 준다
+  claimedBy?: string;          // 선점한 실행 id (진단용)
+  // SMTP 발송을 **시작한** 시각. 이게 있는데 sent 가 아니면 '보냈는지 모름' 이다.
+  // 자동으로 pending 에 되돌리면 같은 곳에 두 번 나갈 수 있어서 사람에게 넘긴다.
+  sendStartedAt?: Date | null;
   sentAt?: Date;
   attempts: number;
   lastError?: string;
@@ -39,7 +46,7 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   scheduledFor: { type: Date, required: true, index: true },
   status: {
     type: String,
-    enum: ['pending', 'sent', 'failed', 'canceled'],
+    enum: ['pending', 'processing', 'sent', 'failed', 'canceled'],
     default: 'pending',
     index: true,
   },
@@ -52,6 +59,9 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   followUp: { type: Boolean, default: false },
   followUpDays: { type: Number, default: 7 },
   createdBy: { type: String, default: '' },
+  claimedAt: { type: Date, default: null },
+  claimedBy: { type: String, default: '' },
+  sendStartedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 // Cron 이 due 항목 pull 할 때 최적화

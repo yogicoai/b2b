@@ -250,7 +250,7 @@ export async function POST(req: Request) {
     // "검증 실패로 뺐는데 메일이 갔다" 가 되므로 먼저 알리고 확인을 받는다.
     const pendingSchedules = nextStage === 'queued'
       ? 0
-      : await EmailSchedule.countDocuments({ leadId, status: 'pending' });
+      : await EmailSchedule.countDocuments({ leadId, status: { $in: ['pending', 'processing'] } });
 
     if (pendingSchedules > 0 && !force) {
       return NextResponse.json({

@@ -104,7 +104,8 @@ export async function POST(req: Request) {
 
     // 이미 예약이 걸린 곳은 건너뛴다 — 같은 곳에 두 번 깔리면 이틀 연속 나간다
     const already = await EmailSchedule.find(
-      { leadId: { $in: leadIds }, status: 'pending' }, { leadId: 1 },
+      // processing(지금 나가는 중)도 센다 — 8초 사이에 같은 곳을 또 깔면 두 번 나간다
+      { leadId: { $in: leadIds }, status: { $in: ['pending', 'processing'] } }, { leadId: 1 },
     ).lean();
     const pendingSet = new Set(already.map((a: any) => a.leadId));
 

@@ -39,9 +39,19 @@ function getTransporter(): nodemailer.Transporter {
     port,
     secure,
     auth: { user, pass },
+    ...SMTP_TIMEOUTS,
   });
   return cachedTransporter;
 }
+
+/**
+ * SMTP 타임아웃 — nodemailer 기본값은 연결 2분·소켓 **10분**이다.
+ *
+ * 예약 발송은 Vercel 에서 300초 안에 끝나야 한다. 한 통이 기본값만큼 붙잡히면
+ * 'SMTP 는 성공했는데 기록 전에 강제 종료' 가 나고, 그 건은 보냈는지 모르는
+ * 상태로 남는다. 한 통이 1분을 못 넘기게 끊는다.
+ */
+const SMTP_TIMEOUTS = { connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000 };
 
 export interface SendMailInput {
   to: string;                 // 수신자
@@ -198,6 +208,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       port: input.smtpConfig.port,
       secure: input.smtpConfig.secure,
       auth: { user: input.smtpConfig.user, pass: input.smtpConfig.pass },
+      ...SMTP_TIMEOUTS,
     });
   }
 
@@ -229,7 +240,14 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     if (input.sentCopyAccount) {
       try {
         const { saveToSentFolder } = await import('./mail/sent-copy');
-        const r = await saveToSentFolder(input.sentCopyAccount, { ...mailOptions, messageId: info.messageId });
+        // 20초 상한 — 메일은 **이미 나갔다**. 사본 저장(IMAP)이 느려 실행이
+        // 강제 종료되면 발송 기록이 안 남아 다시 보내게 될 수 있다. 사본은 못 남겨도
+        // 발송은 성공이므로(여기 주석 첫 줄) 오래 기다리지 않는다.
+        const r = await Promise.race([
+          saveToSentFolder(input.sentCopyAccount, { ...mailOptions, messageId: info.messageId }),
+          new Promise<{ ok: false; error: string }>((res) =>
+            setTimeout(() => res({ ok: false, error: '보낸메일함 사본 20초 초과 — 건너뜀' }), 20_000)),
+        ]);
         savedToSent = r.ok;
         if (!r.ok) sentCopyError = r.error;
       } catch (e: any) {

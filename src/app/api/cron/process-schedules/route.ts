@@ -1,31 +1,30 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { processScheduleItem } from '@/lib/schedule-runner';
 import { DAILY_SEND_CAP, SEND_INTERVAL_MS } from '@/lib/outbound-lock';
+import { isNightBlocked } from '@/lib/email/compliance';
+import { seoulDayStart } from '@/lib/mail/period';
+import {
+  newRunId, claimNext, settleClaim, releaseStale,
+  acquireLease, releaseLease, recordRun,
+} from '@/lib/schedule-claim';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-/** 이 실행에서 쓸 수 있는 시간 (maxDuration 300s 중 여유를 남긴다) */
-const RUN_BUDGET_MS = 270_000;
-
 /**
- * 크론 **1회**에 내보낼 최대 통수.
+ * **선점**을 이 시각까지만 한다 (실행 시작부터).
  *
- * 시간 예산만으로 막으면 270초 ÷ 8초 = 33통이 나가고, 크론이 10분마다 돌면
- * 시간당 198통이 된다. 이카운트가 발신을 막았을 때가 409통 / 94분 = 261통/시
- * 였다 — 그 76% 수준이라 다시 막힐 자리다.
- *
- * 차단 후 정한 기준은 30통 / 30분(=60통/시)이었다. 10분 크론에 10통이면
- * 정확히 그 속도다. 222통이면 3.7시간에 걸쳐 나간다.
- *
- * 급할 때만 환경변수 SCHEDULE_MAX_PER_RUN 으로 올린다 — 올리기 전에
- * "이 주소가 하루에 몇 통까지 견디는가" 를 먼저 생각할 것.
+ * 예전에는 270초까지 새 건을 집었다. 마지막 건이 느리면(첨부 받기·보낸메일함 사본)
+ * 300초 강제 종료가 'SMTP 성공 뒤, 기록 전' 에 걸려 보냈는지 모르는 건이 생긴다.
+ * 한 건 최악 소요(SMTP 타임아웃 ~60초 + 사본 20초)를 빼고 여유를 둔다.
  */
+const CLAIM_DEADLINE_MS = 180_000;
+
 const MAX_PER_RUN = Math.max(1, Number(process.env.SCHEDULE_MAX_PER_RUN) || 10);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -42,7 +41,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * 그래서 여기서 실제로 간격을 둔다.
  *   · 한 통과 다음 통 사이 SEND_INTERVAL_MS 만큼 쉰다
  *   · 하루 총량은 DAILY_SEND_CAP 을 넘지 않는다 (이미 나간 것까지 세어서)
- *   · 실행 시간이 RUN_BUDGET_MS 에 닿으면 남은 것은 다음 실행으로 넘긴다
+ *   · 선점 마감(CLAIM_DEADLINE_MS)에 닿으면 남은 것은 다음 실행으로 넘긴다
  *     (status 는 pending 그대로라 다음 크론이 이어서 집어간다)
  *
  * ── 보안 ──
@@ -78,78 +77,135 @@ async function authorized(req: Request): Promise<boolean> {
   }
 }
 
+/** 크론이 부른 것인가(Bearer) — 화면 버튼은 쿠키로 온다 */
+function viaCron(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  return !!secret && (req.headers.get('authorization') || '') === `Bearer ${secret}`;
+}
+
+/**
+ * 한 번의 발송 실행. 임대를 쥔 채로만 부른다.
+ */
+async function runBatch(runId: string, by: 'cron' | 'button') {
+  const startedAt = Date.now();
+
+  // 죽은 실행이 남긴 선점 정리 — 보내기 전이면 대기로, 보내기 시작했으면 '불명'
+  const stale = await releaseStale();
+
+  // 오늘 이미 나간 통수. **서울 기준 자정**부터 센다.
+  // 예전엔 setHours(0) 이었는데 Vercel 은 UTC 라 그게 한국 09시였다 —
+  // 하루 상한이 아침 9시에 초기화되고, 0~9시 발송분은 전날 몫으로 세졌다.
+  const sentToday = await EmailSchedule.countDocuments({ status: 'sent', sentAt: { $gte: seoulDayStart() } });
+  const remainingToday = Math.max(0, DAILY_SEND_CAP - sentToday);
+  const due = await EmailSchedule.countDocuments({ status: 'pending', scheduledFor: { $lte: new Date() } });
+
+  const results: Array<{ id: string; to?: string; ok: boolean; error?: string; settled?: string }> = [];
+  let stoppedFor: string | null = remainingToday === 0 ? 'daily-cap' : null;
+  const touched: any[] = [];
+  // 실제로 발송을 시도한 수. 속도 상한과 간격은 **이것만** 센다 —
+  // 가드에 걸려 미뤄진 건까지 세면 그 건들이 자리(회당 10통)만 차지해 뒤가 굶는다.
+  let attempted = 0;
+  let needGap = false;
+
+  while (!stoppedFor) {
+    if (attempted >= MAX_PER_RUN) { stoppedFor = 'rate-limit'; break; }
+    if (attempted >= remainingToday) { stoppedFor = 'daily-cap'; break; }
+    if (needGap) {
+      await sleep(SEND_INTERVAL_MS);
+      needGap = false;
+    }
+    if (Date.now() - startedAt > CLAIM_DEADLINE_MS) { stoppedFor = 'time-budget'; break; }
+    // 실행 도중 21시가 되면 멈춘다 (남은 건 pending 그대로)
+    if (isNightBlocked().blocked) { stoppedFor = 'night'; break; }
+
+    const doc = await claimNext(runId, touched);
+    if (!doc) break;   // 더 보낼 것이 없다
+    touched.push(doc._id);
+
+    let r: any;
+    try {
+      r = await processScheduleItem(doc);
+    } catch (e: any) {
+      // 어디서 터졌는지 모른다 — 보낸 것으로 치고(보수적) 정리는 settleClaim 이 한다
+      r = { ok: false, error: e?.message || 'unknown', attempted: true };
+    }
+    // processing 에 남았으면 정리. 보내기 시작한 뒤라면 절대 되돌리지 않는다.
+    const settled = await settleClaim(doc._id, runId);
+    results.push({ id: String(doc._id), to: doc.to, ok: !!r.ok, error: r.error, settled: settled === 'none' ? undefined : settled });
+    if (r.attempted) { attempted++; needGap = true; }
+  }
+
+  const ok = results.filter((x) => x.ok).length;
+  console.log(
+    `[cron:process-schedules] ${by} ${runId} · 처리 ${results.length}/${due} · 발송시도 ${attempted} · 성공 ${ok}` +
+    ` · 오늘 ${sentToday}/${DAILY_SEND_CAP}${stoppedFor ? ` · 멈춤:${stoppedFor}` : ''}` +
+    (stale.released || stale.unknown ? ` · 정리 ${stale.released}대기/${stale.unknown}불명` : ''),
+  );
+
+  const out = {
+    success: true,
+    runId,
+    processed: results.length,
+    attempted,
+    due,
+    releasedStale: stale.released,
+    unknownStale: stale.unknown,
+    results,
+    sentToday,
+    dailyCap: DAILY_SEND_CAP,
+    intervalMs: SEND_INTERVAL_MS,
+    stoppedFor,
+  };
+  await recordRun(by, { processed: results.length, attempted, ok, due, stoppedFor, at: new Date() });
+  return out;
+}
+
 export async function GET(req: Request) {
   if (!(await authorized(req))) {
     return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
   }
-
-  const startedAt = Date.now();
+  const by = viaCron(req) ? 'cron' : 'button';
 
   try {
     await dbConnect();
-    const now = new Date();
 
-    // 오늘 이미 나간 통수 — 하루 상한은 실행 단위가 아니라 하루 단위로 센다
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const sentToday = await EmailSchedule.countDocuments({
-      status: 'sent',
-      sentAt: { $gte: dayStart },
-    });
-    const remainingToday = Math.max(0, DAILY_SEND_CAP - sentToday);
+    // 야간(21~08시 KST)에는 아무것도 집지 않는다. 외부 크론은 밤새 10분마다 부른다.
+    // 심장 박동은 찍는다 — 밤에도 크론이 살아 있다는 표시다.
+    if (isNightBlocked().blocked) {
+      await recordRun(by, { skipped: 'night', at: new Date() });
+      return NextResponse.json({ success: true, processed: 0, results: [], skipped: 'night' });
+    }
 
-    if (remainingToday === 0) {
+    // 한 번에 한 실행만 보낸다. 겹치면 발신 속도·하루 상한이 겹친 수만큼 배가 된다.
+    const runId = newRunId(by);
+    if (!(await acquireLease(runId))) {
+      await recordRun(by, { skipped: 'busy', at: new Date() });
       return NextResponse.json({
-        success: true, processed: 0, results: [],
-        skipped: 'daily-cap', sentToday, dailyCap: DAILY_SEND_CAP,
+        success: true, processed: 0, results: [], skipped: 'busy',
+        message: '다른 발송이 진행 중입니다. 잠시 뒤 다시 시도하세요.',
       });
     }
 
-    const items = await EmailSchedule.find({
-      status: 'pending',
-      scheduledFor: { $lte: now },
-    }).sort({ scheduledFor: 1 }).limit(remainingToday);
-
-    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-    let stoppedFor: string | null = null;
-
-    for (let i = 0; i < items.length; i++) {
-      if (Date.now() - startedAt > RUN_BUDGET_MS) { stoppedFor = 'time-budget'; break; }
-      // 발신 속도 상한 — 남은 건 다음 크론이 이어서 집어간다 (status 는 pending 그대로)
-      if (i >= MAX_PER_RUN) { stoppedFor = 'rate-limit'; break; }
-
-      // 첫 통은 바로, 그다음부터 간격을 둔다
-      if (i > 0) {
-        const left = RUN_BUDGET_MS - (Date.now() - startedAt);
-        if (left < SEND_INTERVAL_MS) { stoppedFor = 'time-budget'; break; }
-        await sleep(SEND_INTERVAL_MS);
-      }
-
-      const doc = items[i];
+    const work = async () => {
       try {
-        const r = await processScheduleItem(doc);
-        results.push({ id: String(doc._id), ok: !!r.ok, error: r.error });
-      } catch (e: any) {
-        results.push({ id: String(doc._id), ok: false, error: e?.message || 'unknown' });
+        return await runBatch(runId, by);
+      } finally {
+        await releaseLease(runId);
       }
+    };
+
+    // 크론에는 **바로 202** 로 답하고 발송은 뒤에서 한다 (maxDuration 안에서).
+    // 발송은 1~3분 걸리는데 cron-job.org 는 30초가 지나면 실패로 기록하고,
+    // 실패가 쌓이면 작업을 스스로 꺼 버린다 — 그러면 크론이 조용히 멈춘다.
+    if (by === 'cron') {
+      after(async () => {
+        try { await work(); } catch (e: any) { console.error('[cron:process-schedules] error:', e); }
+      });
+      return NextResponse.json({ success: true, accepted: true, runId }, { status: 202 });
     }
 
-    const ok = results.filter((r) => r.ok).length;
-    console.log(
-      `[cron:process-schedules] processed ${results.length}/${items.length} · ok=${ok}` +
-      ` · sentToday=${sentToday}/${DAILY_SEND_CAP}${stoppedFor ? ` · stopped:${stoppedFor}` : ''}`,
-    );
-
-    return NextResponse.json({
-      success: true,
-      processed: results.length,
-      due: items.length,
-      results,
-      sentToday,
-      dailyCap: DAILY_SEND_CAP,
-      intervalMs: SEND_INTERVAL_MS,
-      stoppedFor,
-    });
+    // 화면 버튼은 결과를 기다려 보여준다
+    return NextResponse.json(await work());
   } catch (e: any) {
     console.error('[cron:process-schedules] error:', e);
     return NextResponse.json({ success: false, error: e?.message || 'unknown' }, { status: 500 });

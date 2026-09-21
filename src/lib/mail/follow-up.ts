@@ -59,7 +59,8 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
 
   // 이미 다음 예약이 걸린 곳은 건너뛴다
   const pending: any[] = await EmailSchedule.find(
-    { leadId: { $in: leadIds }, status: 'pending' }, { leadId: 1 },
+    // processing(지금 나가는 중)도 센다 — 같은 곳에 다음 메일이 겹쳐 잡히지 않게
+    { leadId: { $in: leadIds }, status: { $in: ['pending', 'processing'] } }, { leadId: 1 },
   ).lean();
   const pendingSet = new Set(pending.map((p) => p.leadId));
 
