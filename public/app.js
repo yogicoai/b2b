@@ -12148,6 +12148,13 @@ async function renderOutboxPage() {
       } catch (e) { alert(`취소 실패: ${e.message || e}`); }
     }));
 
+  // 요약 카드 — 그 숫자에 해당하는 업체만 따로 본다
+  document.querySelectorAll('.outbox-summary-card').forEach((el) =>
+    el.addEventListener('click', () => {
+      if (el.dataset.empty) return;
+      openOutboxSummaryPick(el.dataset.pick, el);
+    }));
+
   // baseLeads 는 id 를 leadId 로 맞춰 두므로 그대로 상세 팝업을 연다
   document.querySelectorAll('.outbox-lead-open').forEach((el) =>
     el.addEventListener('click', (e) => {
@@ -13222,6 +13229,40 @@ function outboxScheduledHtml(pending, failed, canceled) {
  * 답이 없는 곳을 골라내야 다음에 뭘 할지 정할 수 있어서, 나간 날짜로 묶고
  * 회사마다 보낸 횟수와 답장 여부를 같은 줄에 붙여 둔다.
  */
+/** 요약 카드를 눌렀을 때 보여줄 목록 (outboxSentHtml 이 채운다) */
+let _outboxSummaryPick = null;
+
+/**
+ * 요약 카드 클릭 — 그 숫자에 해당하는 업체만 따로 본다.
+ *
+ * 숫자만 있고 누를 수 없으면 "답장 와서 넘어간 곳 2" 를 보고도 어디인지
+ * 알 방법이 없다. 목록에 없는 단계(답장 받음·대화 중·파트너)는 따로 불러온다.
+ */
+async function openOutboxSummaryPick(key, el) {
+  const TITLE = {
+    waiting: '보내고 답 기다리는 곳',
+    nudged: '2번 보냈는데 무응답',
+    maxed: '3번 다 씀 · 무응답',
+    replied: '답장 와서 넘어간 곳',
+  };
+  if (key !== 'replied') {
+    const items = (_outboxSummaryPick && _outboxSummaryPick[key]) || [];
+    if (!items.length) return;
+    openOutboxPeek(TITLE[key], items, { kind: 'lead', sent: true });
+    return;
+  }
+  // 이 화면은 contacted 만 들고 있다 — 넘어간 곳은 서버에서 가져온다
+  const was = el.style.opacity; el.style.opacity = '0.5';
+  try {
+    const d = await safeJsonFetch('/api/leads?stage=replied,negotiating,partner&limit=1000');
+    const items = (d && (d.data || d.leads)) || [];
+    if (!items.length) { alert('답장이 와서 넘어간 곳이 아직 없습니다.'); return; }
+    openOutboxPeek(TITLE.replied, items, { kind: 'lead', sent: true });
+  } catch (e) {
+    alert(`목록을 불러오지 못했습니다: ${(e && e.message) || e}`);
+  } finally { el.style.opacity = was; }
+}
+
 /**
  * [발송 완료] 에 실제로 뜨는 **업체 수**.
  *
@@ -13295,6 +13336,10 @@ function outboxSentHtml(sentSched, sentLeads) {
 
   const nudged = rows.filter((r) => !r.replied && r.count >= 2);
   const maxed  = rows.filter((r) => !r.replied && r.count >= 3);
+  // 카드를 누르면 그 곳들만 따로 본다. rows 는 화면용 모양이라 원래 리드로 되돌린다.
+  const leadById = new Map((sentLeads || []).map((l) => [l.leadId, l]));
+  const pick = (list) => list.map((r) => leadById.get(r.leadId)).filter(Boolean);
+  _outboxSummaryPick = { waiting: pick(rows), nudged: pick(nudged), maxed: pick(maxed) };
   // 답장이 오면 리드가 'replied' 로 올라가 이 목록에서 빠진다(lib/mail/ingest.ts).
   // 그래서 여기 남아 있다는 것 자체가 "아직 답이 없다"는 뜻이다. 어디로 갔는지는
   // 알려줘야 사라진 것을 잃어버린 것으로 오해하지 않는다.
@@ -13306,15 +13351,19 @@ function outboxSentHtml(sentSched, sentLeads) {
   const summary = `
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:9px">
       ${[
-        ['보내고 답 기다리는 곳', rows.length, 'var(--text-primary)', 'var(--border-default)'],
-        ['2번 보냈는데 무응답', nudged.length, '#b45309', '#fcd34d'],
-        ['3번 다 씀 · 무응답', maxed.length, '#b91c1c', '#fecaca'],
-        ['답장 와서 넘어간 곳', movedToReplied, '#166534', '#86efac'],
-      ].map(([label, n, color, border]) => `
-        <div style="flex:1;min-width:132px;padding:10px 13px;border:1px solid ${border};
-                    border-radius:10px;background:var(--bg-surface)">
+        ['waiting', '보내고 답 기다리는 곳', rows.length, 'var(--text-primary)', 'var(--border-default)'],
+        ['nudged', '2번 보냈는데 무응답', nudged.length, '#b45309', '#fcd34d'],
+        ['maxed', '3번 다 씀 · 무응답', maxed.length, '#b91c1c', '#fecaca'],
+        ['replied', '답장 와서 넘어간 곳', movedToReplied, '#166534', '#86efac'],
+      ].map(([key, label, n, color, border]) => `
+        <div class="outbox-summary-card" data-pick="${key}" ${n ? '' : 'data-empty="1"'}
+             title="${n ? '누르면 이 곳들만 따로 봅니다' : '해당 없음'}"
+             style="flex:1;min-width:132px;padding:10px 13px;border:1px solid ${border};
+                    border-radius:10px;background:var(--bg-surface);
+                    cursor:${n ? 'pointer' : 'default'};user-select:none">
           <div style="font-size:11px;color:var(--text-tertiary);font-weight:700">${label}</div>
           <div style="font-size:19px;font-weight:800;color:${color};line-height:1.2">${n.toLocaleString()}</div>
+          ${n ? '<div style="font-size:10.5px;color:var(--text-quaternary);margin-top:2px">눌러서 보기 →</div>' : ''}
         </div>`).join('')}
     </div>
     <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:13px;line-height:1.6">

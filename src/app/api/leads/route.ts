@@ -133,7 +133,11 @@ export async function GET(req: Request) {
       if (filter.$or) { and.push({ $or: filter.$or }); delete filter.$or; }
       and.push({ $or: failedOr });
     } else if (stage) {
-      filter.stage = stage;
+      // 쉼표로 여러 단계를 한 번에 — [답장 와서 넘어간 곳] 처럼 '대화가 시작된 곳'
+      // (replied·negotiating·partner)을 묶어 보는 화면이 세 번 부를 이유가 없다.
+      filter.stage = stage.includes(',')
+        ? { $in: stage.split(',').map((x) => x.trim()).filter(Boolean) }
+        : stage;
     }
     if (stage === 'verifying') {
       if (sub === 'unverified') {
