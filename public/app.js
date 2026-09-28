@@ -11956,8 +11956,9 @@ async function renderOutboxPage() {
     // 이 화면은 baseLeads 에 기대면 안 된다.
     // 사이드바에서 발송 관리로 바로 들어오면 그 배열이 비어 있어서, 옮겨둔
     // 곳이 있는데도 화면이 통째로 비어 보였다. 필요한 단계만 직접 가져온다.
-    safeJsonFetch('/api/leads?stage=queued&limit=500').catch(() => null),
-    safeJsonFetch('/api/leads?stage=contacted&limit=500').catch(() => null),
+    safeJsonFetch('/api/leads?stage=queued&limit=3000').catch(() => null),
+    // 500 이면 잘린다 — 발송 완료가 이미 630곳이라 130곳이 목록에서 통째로 빠져 있었다
+    safeJsonFetch('/api/leads?stage=contacted&limit=3000').catch(() => null),
     loadStageCounts().catch(() => null),   // 발송 완료 탭의 "답장 와서 넘어간 곳"
     state.email.templates.length ? null : loadEmailTemplates().catch(() => {}),
     (_mailAccounts || []).length ? null : loadMailAccounts().catch(() => {}),
@@ -12048,7 +12049,7 @@ async function renderOutboxPage() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
         ${tab('ready',     '✉️', '보낼 메일',  readyAll.length,      '#2563eb')}
         ${tab('scheduled', '📅', '예약 발송',  pendingAll.length,    '#b45309')}
-        ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeadsAll.length, '#166534')}
+        ${tab('sent',      '✅', '발송 완료',  outboxSentCompanyCount(sentLeadsAll), '#166534')}
       </div>
 
       ${typeof krOutboxCategoryBarHtml !== 'function' ? '' : krOutboxCategoryBarHtml(
@@ -13221,6 +13222,21 @@ function outboxScheduledHtml(pending, failed, canceled) {
  * 답이 없는 곳을 골라내야 다음에 뭘 할지 정할 수 있어서, 나간 날짜로 묶고
  * 회사마다 보낸 횟수와 답장 여부를 같은 줄에 붙여 둔다.
  */
+/**
+ * [발송 완료] 에 실제로 뜨는 **업체 수**.
+ *
+ * 예전 배지는 `예약 건수 + 업체 수` 였다. 한 업체에 1차·2차를 보내면 예약이 두 건이라
+ * 그만큼 더해져서, 실제 631곳인데 991 로 떴다. 보낼수록 숫자만 부풀었다.
+ * 2차가 나가면 1차는 그 업체의 이전 발송일 뿐 새 항목이 아니다 — 업체 하나로 센다.
+ * outboxSentHtml 의 rows 필터와 같은 기준이어야 배지와 목록이 어긋나지 않는다.
+ */
+function outboxSentCompanyCount(leads) {
+  return (leads || []).filter((l) => {
+    const hist = (l.emailHistory || []).filter((h) => h && h.status === 'sent');
+    return hist.some((h) => h.sentAt) || l.lastEmailSentAt;
+  }).length;
+}
+
 function outboxSentHtml(sentSched, sentLeads) {
   // 회사별로 모은다 — 발송 이력이 있으면 그걸 쓰고, 없으면 마지막 발송 시각만이라도
   const rows = sentLeads.map((l) => {
@@ -13372,7 +13388,7 @@ function outboxSentHtml(sentSched, sentLeads) {
   // 예약으로 나간 건은 위 표에 이미 회사로 잡히지만, 예약분만 따로 세어 준다
   const schedNote = !sentSched.length ? '' : `
     <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:11px">
-      📅 이 중 예약으로 나간 건 ${sentSched.length}건입니다.
+      📅 예약으로 나간 메일 ${sentSched.length}통 (한 업체에 2차까지 갔으면 2통으로 셉니다).
     </div>`;
 
   return summary + schedNote + dayBlocks;
