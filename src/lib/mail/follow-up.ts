@@ -1,5 +1,7 @@
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { Lead } from '@/models/Lead';
+import { EmailTemplate } from '@/models/EmailTemplate';
+import { MailAccount } from '@/models/MailAccount';
 import { MAX_SEND_COUNT_PER_LEAD, MIN_INTERVAL_HOURS } from '@/lib/send-limits';
 import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages';
 
@@ -16,7 +18,16 @@ import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages'
  *   · 발송 한도를 다 썼다     → 3회
  *   · 아직 기다릴 때가 아니다  → 마지막 발송 후 followUpDays 가 안 지났다
  *   · 이미 다음 예약이 있다    → 같은 곳에 두 번 깔리면 연달아 나간다
+ *
+ * ⚠️ 근거는 **리드의 발송 이력(Lead.emailHistory)** 이다. 예약 기록이 아니다.
+ *    예전에는 EmailSchedule 에서만 대상을 찾았다. 그런데 [보낼 메일]에서 바로
+ *    보내면 예약 문서가 아예 안 생긴다 — 그런 곳은 팔로우업이 **영영 안 잡혔다.**
+ *    9/16 에 직접 발송한 408곳이 12일 동안 2차 없이 방치된 게 그 때문이다.
+ *    어떻게 나갔든 '보냈다' 는 사실은 emailHistory 에 남으므로 거기서 찾는다.
  */
+
+/** 예약 기록이 없는(직접 발송) 곳에 쓸 기본 간격 */
+const DEFAULT_FOLLOW_UP_DAYS = 7;
 
 /** 팔로우업 대상이 아닌 단계 — 이미 대화가 시작된 곳 (lib/stages.ts 공용) */
 const CONVERSATION_STAGES: string[] = SHARED_CONVERSATION_STAGES;
@@ -35,27 +46,50 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
   const skipped: FollowUpResult['skipped'] = [];
   let created = 0;
 
-  // 팔로우업을 켜고 실제로 나간 예약들 — 이게 "다음 차례"의 근거다
-  const sentWithFollowUp: any[] = await EmailSchedule.find({
-    status: 'sent',
-    followUp: true,
-  }).sort({ sentAt: 1 }).lean();
+  // 한 번이라도 **실제로 나간** 곳 — 예약으로 갔든 직접 보냈든
+  const leads: any[] = await Lead.find(
+    { deleted: { $ne: true }, 'emailHistory.status': 'sent' },
+    { leadId: 1, Email: 1, stage: 1, category: 1, emailHistory: 1, lastEmailSentAt: 1, inboundCount: 1 },
+  ).lean();
+  if (!leads.length) return { created: 0, skipped, checked: 0 };
 
-  // 리드별로 가장 최근에 나간 것만 본다
+  const leadIds = leads.map((l) => l.leadId);
+  const leadMap = new Map<string, any>(leads.map((l) => [l.leadId, l]));
+
+  // 예약으로 나간 적이 있으면 그때 쓰던 계정·양식·간격을 이어 쓴다
+  const prior: any[] = await EmailSchedule.find(
+    { leadId: { $in: leadIds } },
+    { leadId: 1, templateId: 1, mailAccountId: 1, createdBy: 1, followUpDays: 1, createdAt: 1 },
+  ).sort({ createdAt: 1 }).lean();
+  const priorMap = new Map<string, any>();
+  for (const p of prior) priorMap.set(p.leadId, p);   // 정렬이 오름차순이라 마지막이 남는다
+
+  // 직접 발송분에는 이어 쓸 계정이 없다 — 대표 발송 계정으로 보낸다
+  const fallbackAcc: any = await MailAccount.findOne({ isActive: { $ne: false } })
+    .sort({ isDefault: -1, createdAt: 1 }).lean();
+  // 양식도 이력에 안 남아 있으면 분류에 맞는 것으로 (분류마다 문구가 다르다)
+  const tpls: any[] = await EmailTemplate.find({}, { category: 1 }).lean();
+  const tplForCategory = (cat: string) => tpls.find((t) => t.category === cat);
+
+  /** 이 리드의 '다음 차례' 근거 — 마지막으로 실제 나간 메일 */
   const latest = new Map<string, any>();
-  for (const s of sentWithFollowUp) {
-    const prev = latest.get(s.leadId);
-    const t = new Date(s.sentAt || s.scheduledFor).getTime();
-    if (!prev || t > new Date(prev.sentAt || prev.scheduledFor).getTime()) latest.set(s.leadId, s);
+  for (const l of leads) {
+    const sent = (l.emailHistory || [])
+      .filter((h: any) => h?.status === 'sent' && h?.sentAt)
+      .sort((a: any, b: any) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+    if (!sent.length) continue;
+    const p = priorMap.get(l.leadId);
+    const tpl = sent[0].templateId || p?.templateId || tplForCategory(l.category)?._id;
+    if (!tpl) { skipped.push({ leadId: l.leadId, reason: '쓸 양식이 없음' }); continue; }
+    latest.set(l.leadId, {
+      sentAt: sent[0].sentAt,
+      templateId: String(tpl),
+      mailAccountId: p?.mailAccountId || (fallbackAcc ? String(fallbackAcc._id) : ''),
+      createdBy: p?.createdBy || fallbackAcc?.owner || '',
+      followUpDays: Number(p?.followUpDays) || DEFAULT_FOLLOW_UP_DAYS,
+    });
   }
   if (!latest.size) return { created: 0, skipped, checked: 0 };
-
-  const leadIds = [...latest.keys()];
-  const leads: any[] = await Lead.find(
-    { leadId: { $in: leadIds }, deleted: { $ne: true } },
-    { leadId: 1, Email: 1, stage: 1, emailHistory: 1, lastEmailSentAt: 1, inboundCount: 1 },
-  ).lean();
-  const leadMap = new Map<string, any>(leads.map((l) => [l.leadId, l]));
 
   // 이미 다음 예약이 걸린 곳은 건너뛴다
   const pending: any[] = await EmailSchedule.find(
@@ -80,8 +114,8 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
       skipped.push({ leadId, reason: `발송 한도 ${MAX_SEND_COUNT_PER_LEAD}회 소진` }); continue;
     }
 
-    const days = Math.max(1, Number(last.followUpDays) || 7);
-    const lastSentAt = new Date(last.sentAt || last.scheduledFor);
+    const days = Math.max(1, Number(last.followUpDays) || DEFAULT_FOLLOW_UP_DAYS);
+    const lastSentAt = new Date(last.sentAt);
     const dueAt = new Date(lastSentAt.getTime() + days * 86_400_000);
     if (dueAt.getTime() > now.getTime()) {
       skipped.push({ leadId, reason: `아직 ${days}일 안 됨` }); continue;
