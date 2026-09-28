@@ -4,19 +4,7 @@
   "regions": ["icn1"],
 
   "crons": [
-    {
-      "//": "예약 발송 — 하루 한 번 09:00 KST. **안전망**이다. 주력은 외부 크론(10분마다).",
-      "//2": "Vercel Hobby 는 크론이 하루 1회로 제한돼서, */10 으로 적어도 10분마다 돌지 않았다.",
-      "//3": "실제로 9/21 16:52 예약 10건이 17:00 회차에 안 나갔다. 그래서 cron-job.org 가",
-      "//4": "Authorization: Bearer <CRON_SECRET> 로 10분마다 /api/cron/process-schedules 를 부른다.",
-      "//5": "둘이 겹쳐도 한 예약은 한 번만 나간다 — 발송기가 한 건씩 원자적으로 선점한다.",
-      "path": "/api/cron/process-schedules",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "//": "메일 수집·브리핑. 하루 한 번으로 충분하다 (07:30 KST).",
-      "path": "/api/cron/daily-mail",
-      "schedule": "30 22 * * *"
-    }
+    { "path": "/api/cron/process-schedules", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/daily-mail", "schedule": "30 22 * * *" }
   ]
 }

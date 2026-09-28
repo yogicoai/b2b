@@ -33,6 +33,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * GET /api/cron/process-schedules
  *   Vercel Cron 이 호출. scheduledFor <= now && status=pending 항목을 배치 처리.
  *
+ * ── 언제 깨어나는가 (vercel.json) ──
+ * Vercel 크론은 하루 한 번(09:00 KST)이다. **안전망**일 뿐 주력이 아니다.
+ * Hobby 요금제는 크론을 하루 1회로 제한해서, 10분마다로 적어도 그렇게 돌지 않는다.
+ * 9/21 16:52 에 깔아 둔 예약 10건이 17:00 회차에 안 나간 게 그 때문이다.
+ * 주력은 외부 크론(cron-job.org)이 10분마다 Authorization: Bearer <CRON_SECRET>
+ * 로 이 경로를 부르는 것이다. 둘이 겹쳐 돌아도 한 예약은 한 번만 나간다 —
+ * 아래에서 한 건씩 원자적으로 선점하기 때문이다.
+ *
+ * ⚠️ vercel.json 에 설명을 달지 말 것. 주석용 키를 넣으면 스키마 검증이
+ *    "crons[0] should NOT have additional property" 로 **배포 자체를 막는다.**
+ *    9/28 에 이것 때문에 그날 푸시한 배포가 전부 실패했다. 서버는 9/21 코드로
+ *    계속 돌았고, 선점 규칙이 없는 그 코드가 수동 발송과 겹쳐 11곳에 메일이
+ *    두 번 나갔다. 설명은 여기 주석에 적는다.
+ *
  * ── 왜 한 번에 다 보내지 않는가 ──
  * 예전에는 due 항목 50건을 지연 없이 연속 발송했다. 화면에서 "30곳씩 10분 간격"
  * 으로 예약을 깔아도, 크론이 하루 한 번 깨어나 그때까지 밀린 것을 전부 집어
