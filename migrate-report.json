@@ -1,0 +1,80 @@
+[
+ {
+  "name": "adminusers",
+  "total": 3,
+  "moved": 3,
+  "idx": 1
+ },
+ {
+  "name": "crawljobs",
+  "total": 0,
+  "moved": 0,
+  "idx": 3
+ },
+ {
+  "name": "cronlocks",
+  "total": 1,
+  "moved": 1,
+  "idx": 0
+ },
+ {
+  "name": "emailschedules",
+  "total": 852,
+  "moved": 852,
+  "idx": 4
+ },
+ {
+  "name": "emailtemplates",
+  "total": 6,
+  "moved": 6,
+  "idx": 1
+ },
+ {
+  "name": "inboundmails",
+  "total": 992,
+  "moved": 992,
+  "idx": 15
+ },
+ {
+  "name": "inforequests",
+  "total": 0,
+  "moved": 0,
+  "idx": 1
+ },
+ {
+  "name": "keywords",
+  "total": 24,
+  "moved": 24,
+  "idx": 1
+ },
+ {
+  "name": "leads",
+  "total": 937,
+  "moved": 937,
+  "idx": 14
+ },
+ {
+  "name": "mailaccounts",
+  "total": 2,
+  "moved": 2,
+  "idx": 2
+ },
+ {
+  "name": "mailsettings",
+  "total": 1,
+  "moved": 1,
+  "idx": 0
+ },
+ {
+  "name": "mailsyncstates",
+  "total": 3,
+  "moved": 3,
+  "idx": 1
+ },
+ {
+  "name": "unsubscribes",
+  "total": 18,
+  "moved": 18,
+  "idx": 1
+ }
+]
