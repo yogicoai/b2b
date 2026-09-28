@@ -1,3 +1,11 @@
+/**
+ * 두 DB 를 대조한다 — 건수·문서 내용 지문(SHA-256)·인덱스 정의까지.
+ *
+ * 2026-09-28 DB 이전(기존 클러스터 → cluster0)에 쓴 것이다. 기존 DB 를 지우기
+ * 전에 한 번 더 돌려 확인한다. .env.local 의 MONGODB_URI_OLD 와 MONGODB_URI 를 읽는다.
+ *
+ * 주의: 대조만 한다. 쓰기는 하지 않는다.
+ */
 /** 이전 전후 대조 — 건수·인덱스·문서 내용까지 본다. 읽기만 한다. */
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -6,7 +14,7 @@ import { EJSON } from 'bson';
 
 const env = Object.fromEntries(fs.readFileSync('.env.local', 'utf8').split(/\r?\n/)
   .map((l) => l.match(/^([A-Z_0-9]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
-const src = new MongoClient(env.MONGODB_URI); const dst = new MongoClient(env.MONGODB_URI_NEW);
+const src = new MongoClient(env.MONGODB_URI_OLD); const dst = new MongoClient(env.MONGODB_URI);
 await src.connect(); await dst.connect();
 const S = src.db(), D = dst.db();
 
