@@ -30,7 +30,9 @@ async function dbConnect() {
        ⚠️ 배포 리전과 짝을 맞춰야 한다 — vercel.json 의 "regions": ["icn1"]
 
        이 DB(Atlas)는 **서울**에 있다.
-         ac-b0y2ng4-shard-*.dmz6oro.mongodb.net → 159.143.252.136 (Seoul, KR)
+         ac-y5a81gz-shard-*.yhsmjt4.mongodb.net (Seoul, KR) — 왕복 실측 3ms
+         2026-09-28 에 dmz6oro 클러스터에서 여기로 옮겼다. 옮길 때 리전이
+         바뀌지 않았는지 반드시 확인할 것 — 바뀌면 아래 손해가 그대로 난다.
 
        vercel.json 에 regions 를 안 적으면 Vercel 은 기본값인 미국 동부(iad1)
        에서 돈다. 그러면 요청 하나가 태평양을 두 번 건넌다 —
