@@ -2,6 +2,7 @@ import { EmailSchedule } from '@/models/EmailSchedule';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { MailAccount } from '@/models/MailAccount';
+import { InboundMail } from '@/models/InboundMail';
 import { MAX_SEND_COUNT_PER_LEAD, MIN_INTERVAL_HOURS } from '@/lib/send-limits';
 import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages';
 
@@ -14,7 +15,9 @@ import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages'
  * 다시 나간다. 그래서 "보낸 뒤에 답이 없으면 그때 만든다".
  *
  * 멈추는 조건 (하나라도 걸리면 안 만든다)
- *   · 답장이 왔다            → 리드가 replied/negotiating/partner 로 올라가 있다
+ *   · 답장이 왔다            → 리드가 replied/negotiating/partner 로 올라가 있거나
+ *                            사람이 쓴 것으로 보이는 메일이 붙어 있다
+ *                            (자동응답·반송은 답장으로 세지 않는다)
  *   · 발송 한도를 다 썼다     → 3회
  *   · 아직 기다릴 때가 아니다  → 마지막 발송 후 followUpDays 가 안 지났다
  *   · 이미 다음 예약이 있다    → 같은 곳에 두 번 깔리면 연달아 나간다
@@ -49,7 +52,7 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
   // 한 번이라도 **실제로 나간** 곳 — 예약으로 갔든 직접 보냈든
   const leads: any[] = await Lead.find(
     { deleted: { $ne: true }, 'emailHistory.status': 'sent' },
-    { leadId: 1, Email: 1, stage: 1, category: 1, emailHistory: 1, lastEmailSentAt: 1, inboundCount: 1 },
+    { leadId: 1, Email: 1, stage: 1, category: 1, emailHistory: 1, lastEmailSentAt: 1 },
   ).lean();
   if (!leads.length) return { created: 0, skipped, checked: 0 };
 
@@ -98,13 +101,30 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
   ).lean();
   const pendingSet = new Set(pending.map((p) => p.leadId));
 
+  /**
+   * 사람이 쓴 것으로 보이는 답장이 붙은 곳.
+   *
+   * 예전에는 inboundCount > 0 이면 답장이 온 것으로 봤다. 그런데 그 수에는
+   * 자동응답·반송이 들어간다 — 한국비엠에스제약은 athena@bms.com 이 우리 제목을
+   * 그대로 되돌려 보낸 자동응답 1통 때문에 12일 동안 2차가 **영영 안 잡혔다.**
+   * 화면([발송 완료] 의 '자동응답만') 과 같은 기준으로 센다.
+   *
+   * unknown 은 답장 쪽에 남긴다 — 사람이 쓴 것일 수 있으니, 애매하면 안 보내는
+   * 편이 안전하다. 광고 메일이 대화 중인 곳에 한 번 더 나가는 게 더 큰 사고다.
+   */
+  const replyMails: any[] = await InboundMail.find(
+    { leadId: { $in: leadIds }, classification: { $nin: ['system', 'ad', 'newsletter'] } },
+    { leadId: 1 },
+  ).lean();
+  const realReply = new Set<string>(replyMails.map((m) => String(m.leadId)));
+
   const toInsert: any[] = [];
   for (const [leadId, last] of latest) {
     const lead = leadMap.get(leadId);
     if (!lead) { skipped.push({ leadId, reason: '리드 없음' }); continue; }
 
     // 답장이 왔다 — 여기서 멈춘다. 이게 팔로우업의 가장 중요한 정지 조건이다.
-    if (CONVERSATION_STAGES.includes(lead.stage || '') || (lead.inboundCount || 0) > 0) {
+    if (CONVERSATION_STAGES.includes(lead.stage || '') || realReply.has(leadId)) {
       skipped.push({ leadId, reason: '답장 옴' }); continue;
     }
     if (pendingSet.has(leadId)) { skipped.push({ leadId, reason: '다음 예약 이미 있음' }); continue; }
