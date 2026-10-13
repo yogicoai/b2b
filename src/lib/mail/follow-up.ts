@@ -3,6 +3,7 @@ import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { MailAccount } from '@/models/MailAccount';
 import { InboundMail } from '@/models/InboundMail';
+import { findUnsubscribed } from '@/models/Unsubscribe';
 import { MAX_SEND_COUNT_PER_LEAD, MIN_INTERVAL_HOURS } from '@/lib/send-limits';
 import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages';
 
@@ -118,6 +119,15 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
   ).lean();
   const realReply = new Set<string>(replyMails.map((m) => String(m.leadId)));
 
+  /**
+   * 수신거부한 주소는 아예 예약을 만들지 않는다.
+   *
+   * 발송 직전에도 한 번 막지만(schedule-runner), 거기서만 막으면 거부한 곳에
+   * 7일마다 예약이 새로 깔리고 매번 취소되는 일이 영원히 반복된다. 화면에는
+   * 취소 기록만 쌓여 진짜 봐야 할 것이 묻힌다. 만들지 않는 편이 맞다.
+   */
+  const unsub = await findUnsubscribed(leads.map((l: any) => String(l.Email || '')));
+
   const toInsert: any[] = [];
   for (const [leadId, last] of latest) {
     const lead = leadMap.get(leadId);
@@ -149,6 +159,9 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
     const email = String(lead.Email || '').trim();
     if (!email || !email.includes('@') || /^Not found/i.test(email)) {
       skipped.push({ leadId, reason: '메일 주소 없음' }); continue;
+    }
+    if (unsub.has(email.toLowerCase())) {
+      skipped.push({ leadId, reason: '수신거부한 주소' }); continue;
     }
 
     toInsert.push({

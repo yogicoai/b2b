@@ -44,6 +44,9 @@ const LIST_PROJECTION = {
   inboundCount: 1,
   lastInboundAt: 1,
   needsReply: 1,
+  // 수신거부 — 화면에 표시해야 "왜 이 업체는 안 나가지?" 를 설명할 수 있다.
+  // 값은 /api/unsubscribe 가 링크를 통해 거부한 순간 리드에 찍는다.
+  unsubscribed: 1, unsubscribedAt: 1,
   replyDeadline: 1,
   // 검증 배지 (verifyBucketOf 최소 필드)
   'verification.aiVerdict': 1, 'verification.aiVerifiedAt': 1,

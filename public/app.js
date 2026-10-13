@@ -13300,6 +13300,8 @@ function outboxSentHtml(sentSched, sentLeads) {
       // 진짜 답장은 받는 순간 리드가 replied 로 올라가 이 목록을 떠나므로,
       // 여기 남은 채 받은 메일이 있다면 그건 자동응답·반송이다.
       replied: ['replied', 'negotiating', 'partner'].includes(l.stage),
+      // 수신거부 — 이 업체엔 앞으로 한 통도 안 나간다. 제일 먼저 보여야 한다.
+      unsub: l.unsubscribed === true,
       autoOnly: (l.inboundCount || 0) > 0 && !['replied', 'negotiating', 'partner'].includes(l.stage),
       // 마지막으로 보낸 뒤 며칠째 답이 없는지 — 팔로우업 판단의 실제 기준
       waited: last ? Math.max(0, Math.floor((Date.now() - new Date(last).getTime()) / 86400000)) : 0,
@@ -13419,7 +13421,9 @@ function outboxSentHtml(sentSched, sentLeads) {
                     ${r.count > 1 && r.first ? `<span style="color:var(--text-quaternary)"> · 첫 발송 ${String(r.first).slice(5, 10).replace('-', '/')}</span>` : ''}
                   </td>
                   <td style="padding:8px 15px;white-space:nowrap;text-align:right">
-                    ${r.replied
+                    ${r.unsub
+                      ? '<span style="color:#b91c1c;font-weight:700" title="이 주소는 수신거부했습니다. 앞으로 어떤 메일도 나가지 않습니다.">🚫 수신거부</span>'
+                      : r.replied
                       ? '<span style="color:#166534;font-weight:700">✅ 답장 옴</span>'
                       : r.autoOnly
                         ? `<span style="color:var(--text-tertiary)" title="자동응답·반송만 왔습니다. 사람이 쓴 답장이 아니라 [답장받음]에는 올라가지 않습니다.">📩 자동응답만 · 무응답 ${r.waited}일</span>`
