@@ -6,6 +6,7 @@ import { buildVarsFromLead, buildSignatureBlock } from './template-vars';
 import { decryptSecret } from './crypto';
 import { checkSendGuard, lastSuccessfulSendAt, MIN_INTERVAL_HOURS } from './send-limits';
 import { isNightBlocked } from './email/compliance';
+import { findUnsubscribed } from '@/models/Unsubscribe';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { resolveOutreachAccount } from './mail/accounts';
 import { loadTemplateAttachments } from './mail/template-attachments';
@@ -37,14 +38,25 @@ export async function processScheduleItem(doc: any) {
   // 건은 못 끊는다. 발송 직전에 한 번 더 본다.
   // 팔로우업(2·3번째)은 그 사이 답장이 왔으면 보내지 않는다 — 답한 사람에게
   // "혹시 보셨나요" 를 보내는 셈이다. 팔로우업 생성 때만 거르고 있었다.
+  // 수신거부한 주소에는 무슨 일이 있어도 보내지 않는다.
+  //
+  // 이 확인이 [보낼 메일] 화면(mail/compose)과 크롤러에는 있었는데 **예약 발송
+  // 경로에는 없었다.** 2026-10-13 에 3차 대기 509건을 점검하다 13건이 수신거부
+  // 주소인 걸 발견했다. 거부한 사람에게 자동 팔로우업이 그대로 나갈 뻔했다.
+  // 정보통신망법 제50조 위반이고, 과태료보다 거부 의사를 무시했다는 사실이 더
+  // 치명적이다. 거부는 리드가 아니라 **주소**에 붙으므로 Unsubscribe 를 본다.
+  const blockedAddrs = await findUnsubscribed([String(doc.to || '')]);
+
   const REPLIED = ['replied', 'negotiating', 'partner'];
-  const excluded = lead.deleted === true
-    ? '업체가 삭제됨'
-    : ['failed', 'archived'].includes(lead.stage)
-      ? `업체가 발송 제외 단계(${lead.stage})로 옮겨짐`
-      : (Number(doc.attemptNo) > 1 && REPLIED.includes(lead.stage))
-        ? '그 사이 답장이 와서 팔로우업을 보내지 않음'
-        : '';
+  const excluded = blockedAddrs.has(String(doc.to || '').toLowerCase())
+    ? '수신거부한 주소'
+    : lead.deleted === true
+      ? '업체가 삭제됨'
+      : ['failed', 'archived'].includes(lead.stage)
+        ? `업체가 발송 제외 단계(${lead.stage})로 옮겨짐`
+        : (Number(doc.attemptNo) > 1 && REPLIED.includes(lead.stage))
+          ? '그 사이 답장이 와서 팔로우업을 보내지 않음'
+          : '';
   if (excluded) {
     doc.status = 'canceled';
     doc.canceledReason = excluded;
