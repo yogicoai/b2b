@@ -12148,6 +12148,40 @@ async function renderOutboxPage() {
       } catch (e) { alert(`취소 실패: ${e.message || e}`); }
     }));
 
+  // [제외] — 이 업체엔 앞으로 보내지 않는다.
+  //
+  // stage 를 보관함으로 옮기지 않고 수신거부 명단에 넣는다. stage 는 리드에
+  // 붙어서 다시 크롤링하면 새 리드가 생기며 제외가 사라진다. 주소에 붙여야
+  // 재수집을 넘어 살아남는다.
+  document.querySelectorAll('.outbox-unsub').forEach((el) =>
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const email = el.dataset.email;
+      const company = el.dataset.company;
+      const warn = [
+        company,
+        email,
+        '',
+        '이 업체를 발송 대상에서 뺍니다.',
+        '앞으로 어떤 메일도 나가지 않고, 다시 수집돼도 제외가 유지됩니다.',
+        '',
+        '제외할까요?',
+      ].join('\n');
+      if (!confirm(warn)) return;
+      el.disabled = true; el.textContent = '처리 중';
+      try {
+        await safeJsonFetch('/api/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, reason: '담당자가 화면에서 제외' }),
+        });
+        renderOutboxPage();
+      } catch (err) {
+        alert(`제외하지 못했습니다: ${(err && err.message) || err}`);
+        el.disabled = false; el.textContent = '제외';
+      }
+    }));
+
   // 요약 카드 — 그 숫자에 해당하는 업체만 따로 본다
   document.querySelectorAll('.outbox-summary-card').forEach((el) =>
     el.addEventListener('click', () => {
@@ -13437,6 +13471,15 @@ function outboxSentHtml(sentSched, sentLeads) {
                       : r.count >= 3
                         ? `<span style="color:#b91c1c;font-weight:700">무응답 ${r.waited}일 · 더 못 보냄</span>`
                         : `<span style="color:#b45309">무응답 ${r.waited}일</span>`}
+                    ${r.unsub || !r.email ? '' : `
+                      <button class="outbox-unsub" data-email="${escapeAttr(r.email)}"
+                              data-company="${escapeAttr(r.company)}"
+                              title="이 업체를 앞으로 발송 대상에서 뺍니다"
+                              style="margin-left:8px;padding:2px 7px;font-size:10.5px;font-weight:700;
+                                     color:var(--text-tertiary);background:var(--bg-surface);
+                                     border:1px solid var(--border-default);border-radius:6px;cursor:pointer">
+                        제외
+                      </button>`}
                   </td>
                 </tr>`).join('')}
             </tbody>
