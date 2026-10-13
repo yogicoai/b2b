@@ -13241,8 +13241,9 @@ let _outboxSummaryPick = null;
 async function openOutboxSummaryPick(key, el) {
   const TITLE = {
     waiting: '보내고 답 기다리는 곳',
-    nudged: '2번 보냈는데 무응답',
+    todo: '아직 더 보낼 수 있는 곳',
     maxed: '3번 다 씀 · 무응답',
+    unsub: '수신거부한 곳 — 앞으로 안 나갑니다',
     replied: '답장 와서 넘어간 곳',
   };
   if (key !== 'replied') {
@@ -13336,12 +13337,16 @@ function outboxSentHtml(sentSched, sentLeads) {
     return `${base} · ${diff}일 전`;
   };
 
-  const nudged = rows.filter((r) => !r.replied && r.count >= 2);
-  const maxed  = rows.filter((r) => !r.replied && r.count >= 3);
+  // 예전에는 nudged 를 count >= 2 로 셌다. 3번까지 다 보낸 곳도 "2번 이상"이라
+  // 전부 들어와서, 3차가 끝난 날 이 카드가 전체와 똑같은 630 을 가리켰다.
+  // 카드는 **남은 할 일**을 보여줘야 한다 — 아직 더 보낼 수 있는 곳만 센다.
+  const todo   = rows.filter((r) => !r.replied && !r.unsub && r.count < 3);
+  const maxed  = rows.filter((r) => !r.replied && !r.unsub && r.count >= 3);
+  const unsubd = rows.filter((r) => r.unsub);
   // 카드를 누르면 그 곳들만 따로 본다. rows 는 화면용 모양이라 원래 리드로 되돌린다.
   const leadById = new Map((sentLeads || []).map((l) => [l.leadId, l]));
   const pick = (list) => list.map((r) => leadById.get(r.leadId)).filter(Boolean);
-  _outboxSummaryPick = { waiting: pick(rows), nudged: pick(nudged), maxed: pick(maxed) };
+  _outboxSummaryPick = { waiting: pick(rows), todo: pick(todo), maxed: pick(maxed), unsub: pick(unsubd) };
   // 답장이 오면 리드가 'replied' 로 올라가 이 목록에서 빠진다(lib/mail/ingest.ts).
   // 그래서 여기 남아 있다는 것 자체가 "아직 답이 없다"는 뜻이다. 어디로 갔는지는
   // 알려줘야 사라진 것을 잃어버린 것으로 오해하지 않는다.
@@ -13354,8 +13359,9 @@ function outboxSentHtml(sentSched, sentLeads) {
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:9px">
       ${[
         ['waiting', '보내고 답 기다리는 곳', rows.length, 'var(--text-primary)', 'var(--border-default)'],
-        ['nudged', '2번 보냈는데 무응답', nudged.length, '#b45309', '#fcd34d'],
+        ['todo', '아직 더 보낼 수 있는 곳', todo.length, '#b45309', '#fcd34d'],
         ['maxed', '3번 다 씀 · 무응답', maxed.length, '#b91c1c', '#fecaca'],
+        ['unsub', '🚫 수신거부', unsubd.length, '#b91c1c', '#fecaca'],
         ['replied', '답장 와서 넘어간 곳', movedToReplied, '#166534', '#86efac'],
       ].map(([key, label, n, color, border]) => `
         <div class="outbox-summary-card" data-pick="${key}" ${n ? '' : 'data-empty="1"'}
@@ -13371,6 +13377,7 @@ function outboxSentHtml(sentSched, sentLeads) {
     <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:13px;line-height:1.6">
       답장이 오면 그 회사는 <b>[💬 답장 받음]</b> 으로 자동으로 옮겨가고 이 목록에서 빠집니다.
       여기 남아 있는 곳은 아직 답이 없는 곳입니다.
+      <b>🚫 수신거부</b> 한 곳은 횟수가 남아 있어도 다시 보내지 않습니다.
     </div>`;
 
   const countBadge = (n) => {
