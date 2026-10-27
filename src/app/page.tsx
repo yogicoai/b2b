@@ -169,6 +169,11 @@ export default function Home() {
             <button className="nav-item" data-view="tool-crm-account" type="button" title="내 계정 관리 — 로그인 아이디 확인 · 비밀번호 변경">
               <span className="nav-icon">👤</span><span className="nav-label">내 계정 관리</span>
             </button>
+            {/* AI 에이전트(Claude·Codex·아침 자동 실행) 연결 키 — 로그인과 따로 둔다 (public/agent-screens.js).
+                키로는 읽기와 답장 초안 저장만 되고, 초안은 [발송 관리 → 🤖 승인 대기]로 들어간다. */}
+            <button className="nav-item" data-view="tool-agent-keys" type="button" title="AI 에이전트 연결 — Claude·Codex 가 쓰는 키를 만들고 끄고, 무엇을 했는지 봅니다 (읽기·초안 저장만)">
+              <span className="nav-icon">🤖</span><span className="nav-label">AI 에이전트 연결</span>
+            </button>
             {/* 아이디 관리는 마스터만 쓴다. 서브 계정이 서로의 비밀번호를 바꿀 수 있으면
                 계정을 나눈 의미가 없다. 로그인한 아이디가 마스터가 아니면 app.js 가
                 이 줄을 숨긴다(하단 data-master-only). 서버도 403 으로 한 번 더 막는다. */}
@@ -752,7 +757,9 @@ export default function Home() {
           둘 다 평범한 스크립트라 kr-screens.js 의 함수는 전역에 올라가고
           app.js 의 render() 가 그대로 부른다. */}
       <Script src="/kr-screens.js?v=1" strategy="afterInteractive" />
-      <Script src="/app.js?v=373a20f6" strategy="afterInteractive" />
+      {/* AI 에이전트 화면(키 관리·승인 대기·회신 상자의 AI 초안 띠)도 같은 이유로 나눠 둔다. */}
+      <Script src="/agent-screens.js?v=1" strategy="afterInteractive" />
+      <Script src="/app.js?v=7fb1d76d" strategy="afterInteractive" />
     </>
   );
 }

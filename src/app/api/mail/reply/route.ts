@@ -8,6 +8,7 @@ import { moveRepliedToNegotiating } from '@/lib/mail/stage-on-reply';
 import { composeReply, pickReplyAccount } from '@/lib/mail/compose-reply';
 import { buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
+import { markAgentDraftSent } from '@/lib/agent/drafts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -65,6 +66,8 @@ export async function GET(req: Request) {
  *   subject?: string,        // 생략 시 "Re: 원문제목"
  *   mailAccountId?: string,  // 생략 시 기본 계정
  *   appendSignature?: boolean, // 기본 true
+ *   cc?: string,             // 참조 (쉼표로 이은 주소)
+ *   agentDraftId?: string,   // [발송 관리 → 승인 대기]의 AI 초안을 불러와 보낸 경우 — 그 초안을 '발송 완료' 로 닫는다
  * }
  */
 export async function POST(req: Request) {
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
 
     const composed = await composeReply(scope, body);
     if (!composed.ok) return NextResponse.json(composed.payload, { status: composed.status });
-    const { mail, account, to, subject, html, text, bodySource, headers, threaded, from } = composed.reply;
+    const { mail, account, to, cc, subject, html, text, bodySource, headers, threaded, from } = composed.reply;
 
     let smtpPass = '';
     try {
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
 
     const result = await sendMail({
       to,
+      cc: cc || undefined,
       subject,
       html,
       text,
@@ -147,9 +151,31 @@ export async function POST(req: Request) {
       await moveRepliedToNegotiating(mail.leadId);
     }
 
+    // ── AI 초안에서 출발한 회신이면 그 초안을 '발송 완료' 로 닫는다 ──
+    // DRY RUN 은 실제로 나간 것이 아니므로 승인 대기로 그대로 둔다.
+    // 실패해도 발송은 이미 끝났다 — 응답을 실패로 바꾸지 않는다.
+    let agentDraft: { edited: boolean } | null = null;
+    if (body.agentDraftId && !result.dryRun) {
+      try {
+        agentDraft = await markAgentDraftSent(scope, String(body.agentDraftId), {
+          inboundMailId: String(mail._id),
+          sentAt: new Date(now),
+          to,
+          messageId: result.messageId,
+          subject,
+          body: String(body.body || ''),
+          bodyIsHtml: body.bodyIsHtml === true,
+        });
+      } catch (e: any) {
+        console.warn('[mail/reply] AI 초안 발송 완료 표시 실패:', e?.message || e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       to,
+      cc: cc || '',
+      agentDraft,
       subject,
       messageId: result.messageId,
       dryRun: Boolean(result.dryRun),

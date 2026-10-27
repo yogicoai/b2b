@@ -15,6 +15,13 @@ export async function proxy(req: NextRequest) {
     // 그건 "수신거부 수단을 제공하지 않은 것"과 같다 (정보통신망법 제50조).
     // 대신 주소마다 HMAC 서명을 실어 남의 주소를 대신 거부시키지 못하게 한다.
     req.nextUrl.pathname.startsWith('/api/unsubscribe') ||
+    // AI 에이전트(Claude·Codex·아침 자동 실행)는 쿠키 대신 에이전트 키로 들어온다.
+    // 키 확인은 라우트 안에서 DB 를 읽어 한다(lib/agent/keys.ts). 이 두 경로에는 읽기·초안 저장밖에
+    // 없고 발송·삭제·설정 API 는 여기서 빠지지 않으므로, 키로는 그쪽에 닿을 수 없다.
+    // ('/api/agent-keys' · '/api/agent-drafts' 는 사람이 쓰는 화면용이라 쿠키가 필요하다 — 슬래시까지 맞춰 본다)
+    req.nextUrl.pathname === '/api/agent/v1' ||
+    req.nextUrl.pathname.startsWith('/api/agent/v1/') ||
+    req.nextUrl.pathname === '/api/mcp' ||
     req.nextUrl.pathname.startsWith('/_next') ||
     req.nextUrl.pathname.startsWith('/assets') ||
     req.nextUrl.pathname === '/favicon.ico'

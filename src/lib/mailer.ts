@@ -55,6 +55,9 @@ const SMTP_TIMEOUTS = { connectionTimeout: 15_000, greetingTimeout: 15_000, sock
 
 export interface SendMailInput {
   to: string;                 // 수신자
+  // 참조 — 쉼표로 이은 주소. 회신에서만 쓴다 (AI 초안의 참조, lib/mail/compose-reply.ts).
+  // 콜드메일(ad: true)에는 넘기지 않는다 — 광고성 메일을 여러 업체에 함께 보내면 서로의 주소가 드러난다.
+  cc?: string;
   subject: string;
   html?: string;              // HTML 본문 (bodyIsHtml=true일 때)
   text?: string;              // 텍스트 본문
@@ -224,6 +227,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     const mailOptions = {
       from: `"${fromName}" <${fromAddress}>`,
       to: input.to,
+      cc: input.cc || undefined,
       subject: input.subject,
       html: input.html,
       text: input.text,

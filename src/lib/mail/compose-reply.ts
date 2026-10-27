@@ -3,6 +3,7 @@ import { MailAccount } from '@/models/MailAccount';
 import { canUseAccount, NOT_YOURS, type MailScope } from './scope';
 import { resolveOutreachAccount } from './accounts';
 import { buildSignatureBlock } from '@/lib/template-vars';
+import { parseAddressList } from './addresses';
 
 /**
  * 답장 한 통을 **조립한다** — 보내기(POST /api/mail/reply)와 미리보기(POST /api/mail/reply/preview)가 같이 쓴다.
@@ -22,12 +23,16 @@ export interface ReplyInput {
   mailAccountId?: string;
   appendSignature?: boolean;
   bodyIsHtml?: boolean;
+  /** 참조 — 쉼표로 이은 주소 (AI 초안을 불러왔을 때 회신 상자에 [참조] 칸이 생긴다) */
+  cc?: string;
 }
 
 export interface ComposedReply {
   mail: any;
   account: any;
   to: string;
+  /** 참조 — 없으면 빈 문자열 */
+  cc: string;
   subject: string;
   from: { name: string; address: string };
   html: string;
@@ -82,6 +87,14 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
     : mail.from?.address;
   if (!to) return fail(400, '받을 주소를 찾을 수 없습니다');
 
+  // ── 참조 ── 받는 사람은 위 규칙으로 정해지고, 다른 사람은 참조로만 더한다
+  let cc = '';
+  try {
+    cc = input?.cc ? parseAddressList(input.cc, { field: '참조' }) : '';
+  } catch (e: any) {
+    return fail(400, e?.message || '참조 주소 형식이 아닙니다');
+  }
+
   const picked = await pickReplyAccount(scope, mail, input?.mailAccountId);
   const account: any = picked.account;
   if (!account) return fail(400, picked.error || '발송할 메일 계정이 없습니다');
@@ -125,6 +138,7 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
       mail,
       account,
       to,
+      cc,
       subject,
       from: { name: account.fromName || '', address: account.fromAddress || account.smtpUser },
       html,

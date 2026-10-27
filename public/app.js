@@ -1806,6 +1806,14 @@ async function _renderInner(seq) {
     renderUserAdminPage();
     return;
   }
+  // AI 에이전트 연결 키 (public/agent-screens.js) — 파일 로드 순서가 보장되지 않아 typeof 로 감싼다(위 설명)
+  if (state.view === "tool-agent-keys") {
+    els.viewTitle.textContent = "🤖 AI 에이전트 연결";
+    els.viewSubtitle.textContent = "Claude·Codex·아침 자동 실행이 쓰는 키를 만들고 끄고, 무엇을 했는지 봅니다. 키로는 읽기와 초안 저장만 됩니다.";
+    if (typeof agentRenderKeysPage === 'function') agentRenderKeysPage();
+    else els.content.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-tertiary)">화면을 불러오는 중입니다… 잠시 뒤 다시 눌러 주세요.</div>';
+    return;
+  }
   if (state.view === "tool-compose") {
     els.viewTitle.textContent = "✏️ 메일 쓰기";
     els.viewSubtitle.textContent = "아는 상대에게 한 통 씁니다. 회사 메일로 그대로 나갑니다.";
@@ -9577,6 +9585,8 @@ function bindConversationReply(leadId, rootId) {
       body: text,
       bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
       appendSignature: root.querySelector('#convReplySig')?.checked !== false,
+      // AI 초안을 불러왔으면 그 초안 id·참조·제목 (public/agent-screens.js). 아니면 아무것도 더하지 않는다.
+      ...(typeof agentReplyExtras === 'function' ? agentReplyExtras(root) : {}),
     };
   };
 
@@ -9629,9 +9639,15 @@ function bindConversationReply(leadId, rootId) {
         body: JSON.stringify(payload),
       });
       if (r.success) {
-        msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}</span>`;
-        // 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다
-        setTimeout(() => openConversationModal(leadId), 700);
+        msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}${
+          r.agentDraft ? ' · 🤖 AI 초안을 [발송 완료]로 옮겼습니다' : (payload.agentDraftId && r.dryRun ? ' · AI 초안은 승인 대기로 남습니다(시뮬레이션)' : '')}</span>`;
+        // 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다.
+        // 받은메일 상세(mailDetailRoot)는 리드 없이 열린다 — 그대로 리드 대화를 열면 leadId=null 로 조회해
+        // 오류 창이 떴다. AI 초안 검토([발송 관리 → 승인 대기])가 늘 이 길로 오므로, 그때는 그 메일을 다시 연다.
+        setTimeout(() => {
+          if (leadId) openConversationModal(leadId);
+          else if (rootId === 'mailDetailRoot') openMailDetailModal(btn.dataset.inboundId);
+        }, 700);
         invalidateServerPage?.();
       } else {
         msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(r.error || '실패')}</span>`;
@@ -9644,6 +9660,10 @@ function bindConversationReply(leadId, rootId) {
       btn.textContent = '보내기';
     }
   });
+
+  // ── 🤖 AI 초안 띠 ── 이 메일에 AI 에이전트가 넣어 둔 승인 대기 초안이 있으면 상자 위에 띄운다.
+  // 불러와도 보내는 길은 위 [보내기] 그대로다 (public/agent-screens.js). 그 파일이 아직 안 떴으면 건너뛴다.
+  if (typeof agentDecorateReplyBox === 'function') agentDecorateReplyBox(root);
 }
 
 /**
@@ -9685,6 +9705,7 @@ function openReplyPreviewModal(pv, onSend) {
       <div style="padding:10px 18px 4px">
         ${row('보내는 사람', escapeHtml(fromLine))}
         ${row('받는 사람', escapeHtml(pv.to || ''))}
+        ${pv.cc ? row('참조', escapeHtml(pv.cc)) : ''}
         ${row('제목', `<b>${escapeHtml(pv.subject || '')}</b>`)}
         ${orig.subject ? row('답장 대상', `<span style="color:#475569">${escapeHtml(orig.subject)}</span>
           <span style="color:#94a3b8;font-size:11.5px"> · ${escapeHtml(orig.from || '')}${origDate ? ` · ${escapeHtml(origDate)}` : ''}</span>`) : ''}
@@ -11950,6 +11971,10 @@ async function renderOutboxPage() {
   // 한 번에 200ms 라 그것만으로 1초가 넘는다.
   //
   // 전부 독립이므로 한 묶음으로 보낸다. 느린 하나만큼만 기다리면 된다.
+  // 🤖 승인 대기(AI 초안 · public/agent-screens.js)도 같이 출발시킨다. 그 파일이 아직 안 떴으면 건너뛴다.
+  const approvalP = typeof agentLoadApprovalDrafts === 'function'
+    ? agentLoadApprovalDrafts().catch(() => null)
+    : Promise.resolve(null);
   const [lock, schedData, queuedRes, contactedRes] = await Promise.all([
     loadOutboundStatus(),
     safeJsonFetch('/api/mail/schedule?status=all&limit=500').catch(() => null),
@@ -12008,10 +12033,30 @@ async function renderOutboxPage() {
   _outboxReadyIds = ready.map((l) => l.leadId);
   outboxSyncCompose(ready);
 
+  // 🤖 승인 대기 — AI 에이전트가 넣어 둔 답장 초안 (public/agent-screens.js)
+  const approval = await approvalP;
+  const approvalOn = typeof agentOutboxApprovalHtml === 'function';
+  if (_outboxTab === 'approval' && !approvalOn) _outboxTab = 'ready';
+
   // 탭은 "몇 곳인지" 와 "그게 어느 업체인지" 를 같이 알려야 한다.
   // 목록이 아래에 있어도 스크롤해야 보이니, 탭에서 바로 열 수 있게 한다.
-  const tab = (key, icon, label, n, tone) => {
+  // 승인 대기는 업체가 아니라 초안 '건' 이고, 목록이 탭 바로 아래에 있어 [업체 보기]를 달지 않는다.
+  const tab = (key, icon, label, n, tone, opt = {}) => {
     const on = _outboxTab === key;
+    if (opt.unit) {
+      return `<div class="outbox-tab" data-tab="${key}"
+        style="flex:1;min-width:172px;padding:11px 14px;border-radius:10px;cursor:pointer;
+               border:1px solid ${on ? tone : 'var(--border-default)'};
+               background:${on ? tone + '14' : 'var(--bg-surface)'};
+               box-shadow:${on ? 'inset 0 0 0 1px ' + tone : 'none'}">
+        <div style="font-size:11.5px;font-weight:700;color:${on ? tone : 'var(--text-tertiary)'}">${icon} ${label}</div>
+        <div style="display:flex;align-items:baseline;gap:5px;margin-top:1px">
+          <span style="font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.2">${n.toLocaleString()}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text-tertiary)">${opt.unit}</span>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:${n ? tone : 'var(--text-quaternary)'}">${n ? escapeHtml(opt.hint || '') : '해당 없음'}</div>
+      </div>`;
+    }
     return `<div class="outbox-tab" data-tab="${key}"
       style="flex:1;min-width:172px;padding:11px 14px;border-radius:10px;cursor:pointer;
              border:1px solid ${on ? tone : 'var(--border-default)'};
@@ -12050,9 +12095,11 @@ async function renderOutboxPage() {
         ${tab('ready',     '✉️', '보낼 메일',  readyAll.length,      '#2563eb')}
         ${tab('scheduled', '📅', '예약 발송',  pendingAll.length,    '#b45309')}
         ${tab('sent',      '✅', '발송 완료',  outboxSentCompanyCount(sentLeadsAll), '#166534')}
+        ${approvalOn ? tab('approval', '🤖', '승인 대기 · AI 초안', (approval && approval.pending) || 0, '#7c3aed',
+          { unit: '건', hint: '확인하고 보내 주세요' }) : ''}
       </div>
 
-      ${typeof krOutboxCategoryBarHtml !== 'function' ? '' : krOutboxCategoryBarHtml(
+      ${typeof krOutboxCategoryBarHtml !== 'function' || _outboxTab === 'approval' ? '' : krOutboxCategoryBarHtml(
         _outboxTab === 'ready' ? readyAll : _outboxTab === 'scheduled' ? pendingAll : sentLeadsAll,
         leadLookup,
       )}
@@ -12064,6 +12111,10 @@ async function renderOutboxPage() {
   if (_outboxTab === 'ready')     body.innerHTML = outboxReadyHtml(ready, lock);
   if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled);
   if (_outboxTab === 'sent')      body.innerHTML = outboxSentHtml(sentSched, sentLeads);
+  if (_outboxTab === 'approval') {
+    body.innerHTML = agentOutboxApprovalHtml(approval);
+    agentBindOutboxApproval(() => renderOutboxPage());
+  }
 
   if (typeof krBindOutboxCategoryBar === 'function') krBindOutboxCategoryBar(() => renderOutboxPage());
 

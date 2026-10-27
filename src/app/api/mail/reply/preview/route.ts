@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       preview: {
         from: r.from,
         to: r.to,
+        cc: r.cc,
         subject: r.subject,
         html: r.html,
         text: r.text,

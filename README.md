@@ -99,6 +99,17 @@ npm run dev        # http://localhost:5610
 한 번 거부한 주소는 `unsubscribes` 컬렉션에 **이메일 자체로** 남는다. 리드 문서의 플래그로만
 두면 그 업체를 내년에 다시 크롤링했을 때 거부 이력이 같이 사라지기 때문이다.
 
+## AI 에이전트 연결 (Claude · Codex · 아침 자동 실행)
+
+에이전트는 **메일을 읽고 답장 초안을 넣는 것까지만** 한다. 발송은 사람이 회신 상자에서 [보내기]를 눌러야 된다.
+쓰는 법·주소·응답 예시는 [`docs/AI_AGENT_API.md`](docs/AI_AGENT_API.md).
+
+- 키: [⚙ 설정·도구 → 🤖 AI 에이전트 연결]에서 아이디마다 만든다. 로그인과 따로이고, 키는 만든 아이디의 메일함만 본다
+- 들어오는 길: `/api/mcp`(원격 MCP) · `/api/agent/v1/*`(REST). [`src/proxy.ts`](src/proxy.ts) 가 이 두 경로만 쿠키 없이 통과시키고
+  키 확인은 라우트 안에서 한다([`src/lib/agent/keys.ts`](src/lib/agent/keys.ts)). 발송·삭제·설정 API 는 이 경로에 없다
+- 초안: [📨 발송 관리 → 🤖 승인 대기] 탭. 나가는 길은 원래 회신 경로(`/api/mail/reply`) 하나다
+- 새 화면 코드는 [`public/agent-screens.js`](public/agent-screens.js) 에 갈라 뒀다 (kr-screens.js 와 같은 이유)
+
 ## 환경변수 (`.env.local`)
 
 ```
@@ -133,4 +144,5 @@ UI 는 [`public/app.js`](public/app.js) 한 파일에 든 바닐라 JS SPA 다(1
 ## 컬렉션
 
 `leads` · `inboundmails` · `emailtemplates` · `emailschedules` · `mailaccounts` ·
-`adminusers` · `keywords` · `unsubscribes` · `crawljobs`
+`adminusers` · `keywords` · `unsubscribes` · `crawljobs` ·
+`agentkeys`(에이전트 키 · 해시만) · `agentaudits`(사용 기록 · 180일) · `agentdrafts`(승인 대기 초안)

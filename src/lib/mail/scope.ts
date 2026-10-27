@@ -124,6 +124,14 @@ export async function accountIdsForOwner(user: string): Promise<string[]> {
 export async function getMailScope(): Promise<MailScope | null> {
   const user = await getSessionUser();
   if (!user) return null;
+  return getMailScopeFor(user);
+}
+
+/**
+ * 아이디를 알고 있을 때의 범위 — 쿠키 없이 들어오는 AI 에이전트 키(lib/agent/keys.ts)가 쓴다.
+ * 키는 발급한 아이디에 묶여 있어서, 그 아이디가 로그인해서 보는 범위와 **똑같이** 계산해야 한다.
+ */
+export async function getMailScopeFor(user: string): Promise<MailScope> {
   const s = await scopeForOwner(user);
   return { user, isMaster: isMasterUser(user), accountIds: s.accountIds, mailboxGroups: s.mailboxGroups };
 }

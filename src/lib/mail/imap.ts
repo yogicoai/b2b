@@ -689,3 +689,67 @@ export async function fetchSentSource(
 export async function sentFolderPath(settings: ImapConfig): Promise<string | null> {
   return withClient(settings, (client) => findSentPath(client));
 }
+
+export interface SentSourceItem {
+  uid: number;
+  subject: string;
+  date: Date | null;
+  to: { name: string; address: string }[];
+  cc: { name: string; address: string }[];
+  /** 원문 앞부분 — 첨부가 붙은 메일도 본문이 앞에 오므로 이만큼이면 글은 다 들어온다 */
+  source: Buffer;
+  /** 원문이 잘렸는가 (첨부가 크거나 본문이 아주 긴 메일) */
+  sourceTruncated: boolean;
+}
+
+/** 한 통에서 받는 원문 상한 — 첨부까지 통째로 받으면 30통이 수십 MB 가 된다 */
+const SENT_SOURCE_MAX = 200_000;
+
+/**
+ * 보낸메일함에서 since 이후에 보낸 것을 최신순으로 한 쪽 읽는다 — **본문 앞부분까지**.
+ *
+ * AI 에이전트가 "평소 이렇게 쓴다" 를 배우는 데 쓴다 (lib/agent/api.ts listSentMails).
+ * 화면의 [📤 보낸 메일함](listSentPage)은 본문을 받지 않는다 — 목록 2,000통이 수백 MB 가 되기 때문이다.
+ * 여기서는 한 쪽(최대 50통)만, 한 통에 앞 200KB 만 받는다.
+ */
+export async function listSentSince(
+  settings: ImapConfig,
+  { since, page = 1, pageSize = 30 }: { since: Date; page?: number; pageSize?: number },
+): Promise<{ folder: string | null; total: number; page: number; pageSize: number; items: SentSourceItem[] }> {
+  return withClient(settings, async (client) => {
+    const folder = await findSentPath(client);
+    if (!folder) return { folder: null, total: 0, page, pageSize, items: [] };
+
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const uids: number[] = ((await client.search({ since }, { uid: true })) || []) as number[];
+      uids.sort((a, b) => b - a);
+      const total = uids.length;
+      const slice = uids.slice((page - 1) * pageSize, page * pageSize);
+      if (!slice.length) return { folder, total, page, pageSize, items: [] };
+
+      const items: SentSourceItem[] = [];
+      for await (const msg of client.fetch(
+        slice.join(','),
+        { uid: true, envelope: true, source: { start: 0, maxLength: SENT_SOURCE_MAX } },
+        { uid: true },
+      )) {
+        const e: any = msg.envelope || {};
+        const source = (msg as any).source as Buffer | undefined;
+        items.push({
+          uid: msg.uid,
+          subject: e.subject || '',
+          date: e.date || (msg as any).internalDate || null,
+          to: addrList(e.to),
+          cc: addrList(e.cc),
+          source: source || Buffer.alloc(0),
+          sourceTruncated: Boolean(source && source.length >= SENT_SOURCE_MAX),
+        });
+      }
+      items.sort((a, b) => b.uid - a.uid);
+      return { folder, total, page, pageSize, items };
+    } finally {
+      lock.release();
+    }
+  });
+}
